@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hmac
 import os
+import shutil
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -138,6 +139,10 @@ def _run(job_id: str, req: JobRequest, uploader=None):
                               {"project_id": req.project_id, "workspace_id": req.workspace_id, "status": job["status"], "error": job["error"], "clips": []})
             except Exception:
                 pass
+    finally:
+        # Clips are in storage (or the job failed), so free the disk. Only the job's own folder is removed.
+        if req.workspace_id and req.project_id:
+            shutil.rmtree(os.path.join(WORK_ROOT, job_id), ignore_errors=True)
 
 
 @app.get("/health")
