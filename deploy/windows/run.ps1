@@ -6,23 +6,52 @@ $Root = Join-Path $env:USERPROFILE "video-studio-worker"
 $EnvFile = Join-Path $Root "worker.env"
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = "SilentlyContinue"
+$Bin = Join-Path $Root "bin"
+New-Item -ItemType Directory -Force -Path $Bin | Out-Null
+
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($env:Path -notlike "*$Bin*") { $env:Path = "$Bin;" + $env:Path }
 }
-function Have($name) { [bool](Get-Command $name -ErrorAction SilentlyContinue) }
-function Install-Tool($cmd, $id) {
-  Refresh-Path
-  if (Have $cmd) { return }
-  Write-Host "Installing $id ..."
-  winget install -e --id $id --silent --accept-package-agreements --accept-source-agreements | Out-Null
-  Refresh-Path
-  if (-not (Have $cmd)) { throw "$id was installed but '$cmd' is not found. Close this window, open a new PowerShell and run the same command again." }
+function Download($url, $dest) {
+  Write-Host "Downloading $url"
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $dest
+}
+function Python-Works {
+  try { $v = & python --version 2>&1; return ($LASTEXITCODE -eq 0 -and "$v" -match "Python 3\.(9|1\d)") } catch { return $false }
 }
 
-if (-not (Have "winget")) { throw "winget is missing. Update 'App Installer' from the Microsoft Store, then run this again." }
-Install-Tool "python" "Python.Python.3.12"
-Install-Tool "ffmpeg" "Gyan.FFmpeg"
-Install-Tool "cloudflared" "Cloudflare.cloudflared"
+Refresh-Path
+
+if (-not (Python-Works)) {
+  Write-Host "Installing Python ..."
+  $inst = Join-Path $Root "python-setup.exe"
+  Download "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe" $inst
+  Start-Process -FilePath $inst -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_test=0", "Include_launcher=0" -Wait
+  $pyDir = Join-Path $env:LOCALAPPDATA "Programs\Python\Python312"
+  $env:Path = "$pyDir;$pyDir\Scripts;" + $env:Path
+  if (-not (Python-Works)) { throw "Python did not install. Install Python 3.12 from python.org, tick 'Add to PATH', then run this again." }
+}
+
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+  Write-Host "Installing ffmpeg ..."
+  $z = Join-Path $Root "ffmpeg.zip"
+  Download "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $z
+  $x = Join-Path $Root "ffmpeg-tmp"
+  if (Test-Path $x) { Remove-Item -Recurse -Force $x }
+  Expand-Archive -Path $z -DestinationPath $x -Force
+  Get-ChildItem -Path $x -Recurse -Include ffmpeg.exe, ffprobe.exe | Copy-Item -Destination $Bin -Force
+  Remove-Item -Recurse -Force $x, $z
+  if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { throw "ffmpeg did not install." }
+}
+
+if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
+  Write-Host "Installing cloudflared ..."
+  Download "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" (Join-Path $Bin "cloudflared.exe")
+  if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) { throw "cloudflared did not install." }
+}
 
 # ---- settings ----
 $keys = @("APP_URL", "WORKER_TOKEN", "CALLBACK_SECRET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "GEMINI_API_KEY")
