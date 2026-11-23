@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { currentWorkspace } from "@/lib/workspace";
+import Upgrade from "./upgrade";
 
 async function Usage() {
   const { supabase, workspaceId } = await currentWorkspace();
@@ -18,7 +19,8 @@ async function Usage() {
   ] as const;
   return (
     <>
-      <p className="text-sm">Plan: <b>{ws?.plan}</b>. Limits are placeholders until costs are benchmarked; no payment is wired up yet.</p>
+      <p className="text-sm">Plan: <b>{ws?.plan}</b>. Limits are placeholders until costs are benchmarked.</p>
+      <Upgrade />
       <table className="w-full max-w-xl text-sm">
         <tbody>{rows.map(([label, used, max]) => (
           <tr key={label} className="border-t"><td className="py-2">{label}</td><td className="text-right">{used} / {max}</td></tr>

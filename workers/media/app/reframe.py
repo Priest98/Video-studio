@@ -16,7 +16,8 @@ class CropPlan:
     confident: bool  # False means a fallback was used and the UI should offer manual adjustment
 
 
-FaceDetector = Callable[["cv2.typing.MatLike"], "float | None"]  # grayscale frame -> face centre x, or None
+Face = tuple[float, float]  # (centre x, area)
+FaceDetector = Callable[["cv2.typing.MatLike"], "list[Face] | float | None"]  # grayscale frame -> faces (a bare float = one face)
 
 
 def haar_detector() -> FaceDetector | None:
@@ -31,10 +32,7 @@ def haar_detector() -> FaceDetector | None:
 
     def detect(gray):
         faces = cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-        if not len(faces):
-            return None
-        x, _, w, _ = max(faces, key=lambda f: f[2] * f[3])
-        return float(x + w / 2)
+        return [(float(x + w / 2), float(w * h)) for x, _, w, h in faces]
 
     return detect
 
@@ -48,7 +46,7 @@ def sample_faces(
         return []  # plan_crop then falls back to a centre crop and flags manual adjustment
     cap = cv2.VideoCapture(path)
     try:
-        samples, t = [], 0.0
+        frames, t = [], 0.0
         while start + t < end:
             cap.set(cv2.CAP_PROP_POS_MSEC, (start + t) * 1000)
             ok, frame = cap.read()
@@ -57,12 +55,48 @@ def sample_faces(
             scale = 480 / frame.shape[1] if frame.shape[1] > 480 else 1.0
             small = cv2.resize(frame, None, fx=scale, fy=scale) if scale != 1.0 else frame
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            cx = detector(gray)
-            samples.append((t, cx / scale if cx is not None else None))
+            found = detector(gray)
+            if found is None:
+                found = []
+            elif isinstance(found, (int, float)):
+                found = [(float(found), 1.0)]
+            frames.append((t, [(cx / scale, area) for cx, area in found]))
             t += 1 / sample_fps
-        return samples
+        return list(zip([t for t, _ in frames], pick_primary([f for _, f in frames], jump_px=src_width_hint(cap) * 0.15)))
     finally:
         cap.release()
+
+
+def src_width_hint(cap) -> float:
+    return float(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
+
+
+def pick_primary(frames: list[list[Face]], jump_px: float = 150, hysteresis: int = 4) -> list[float | None]:
+    """Follow one speaker through a multi-face shot. Stay on the current face (nearest to it each frame) and only
+    switch to another face after it has been the largest, and far from the current one, for `hysteresis` frames in a row."""
+    out: list[float | None] = []
+    current: float | None = None
+    streak, challenger = 0, None
+    for faces in frames:
+        if not faces:
+            out.append(None)
+            continue
+        biggest = max(faces, key=lambda f: f[1])[0]
+        if current is None:
+            current = biggest
+        else:
+            nearest = min(faces, key=lambda f: abs(f[0] - current))[0]
+            if abs(biggest - current) > jump_px:
+                streak = streak + 1 if challenger is not None and abs(biggest - challenger) <= jump_px else 1
+                challenger = biggest
+                if streak >= hysteresis:
+                    current, streak, challenger = biggest, 0, None
+                else:
+                    current = nearest if abs(nearest - current) <= jump_px else current
+            else:
+                streak, challenger, current = 0, None, nearest
+        out.append(current)
+    return out
 
 
 def plan_crop(

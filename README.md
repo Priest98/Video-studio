@@ -12,7 +12,9 @@ Multi-user AI video repurposing SaaS: long videos in, edited 9:16 clips out, sen
 | Upload signing, project start, quota checks | Built; needs R2 and worker credentials to run end to end |
 | Distribution Studio (matrix, shuffle, undo, reset, manual order, save plan) | Built |
 | Oyinca transfer logic and adapter | Built against a proposed contract; Oyinca must add it (see docs/oyinca-integration.md) |
-| Not built | Link import, Gemini selection wired to a key, TTS providers, R2 upload of rendered clips, worker-to-web callback, Stripe billing, template editor, caption editor UI, scene detection, speaker selection for multi-speaker video |
+| Link import (YouTube, Twitch via yt-dlp, rights confirmation required), scene-edge trimming, multi-speaker tracking, voice providers (ElevenLabs, Kokoro) with usage metering, R2 upload and signed worker callback | Built; unit-tested, but not run against live R2, ElevenLabs, Kokoro or YouTube |
+| Stripe checkout and webhook | Built; signature handling and plan mapping tested offline, not run with live keys |
+| Not built | Re-rendering a clip after caption text edits, a visual template editor, AI narration script generation (custom scripts work), AI dubbing translation, Gemini wired to a live key, Oyinca side of the contract |
 
 ## Proposed hosting layout
 
