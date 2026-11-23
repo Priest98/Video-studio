@@ -51,7 +51,7 @@ Captions: word-by-word and sentence captions, keyword highlights, fonts, sizes, 
 
 Compression: MP4, H.264, AAC, 1080 x 1920, 30 fps where appropriate, yuv420p, CRF 23 to 26 as the starting benchmark, medium preset, audio 96 to 128 kbps. Modes: Standard, High quality, Smaller file. Adapt to motion complexity, resolution, source quality, duration, audio. Automatic quality checks and re-encode within limits. Show original size, final size, compression percentage, resolution, quality. Do not over-compress. Size figures are placeholders until benchmarked.
 
-Cost controls: temp source retention with cleanup, reuse identical renders, batch processing with worker limits, storage quotas, usage tracking, finished clips in Cloudflare R2 behind a CDN. Never delete final assets against user retention settings.
+Cost controls: temp source retention with cleanup, reuse identical renders, batch processing with worker limits, storage quotas, usage tracking, finished clips in Cloudflare R2 behind a CDN (web app on Vercel). Never delete final assets against user retention settings.
 
 ## 5. Voice Studio
 

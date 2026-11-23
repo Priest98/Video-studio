@@ -6,20 +6,19 @@ Multi-user AI video repurposing SaaS: long videos in, edited 9:16 clips out, sen
 
 Spec only. Phase 1 (auth, dashboard, database) is next.
 
-## Proposed Cloudflare layout
+## Proposed hosting layout
 
-Cloudflare hosts the web app, storage and job orchestration. Heavy media and AI work cannot run on Workers, so it needs separate compute.
+Vercel hosts the web app, Cloudflare R2 stores video, and heavy media and AI work runs on separate compute (Vercel functions cannot run FFmpeg or the models).
 
 | Concern | Where |
 | --- | --- |
-| Web app (Next.js) | Cloudflare Workers via the OpenNext adapter |
-| Finished clips and temp sources | R2, served through the CDN, signed URLs |
-| Job queue and retries | Cloudflare Queues |
-| API and Oyinca transfer orchestration | Workers (TypeScript) calling the worker fleet |
-| FFmpeg rendering, WhisperX, MediaPipe, OpenCV | Containers (Cloudflare Containers or a separate GPU/CPU host); benchmark first |
+| Web app and API routes (Next.js) | Vercel |
+| Finished clips and temp sources | Cloudflare R2, CDN, signed URLs (no egress fees) |
+| Job queue | Separate service (to choose) |
+| FFmpeg, WhisperX, MediaPipe, OpenCV | Separate worker host (container or GPU); benchmark first |
 | Auth and database | Supabase (Postgres, Auth, RLS) |
 
-This replaces the draft's FastAPI backend for the web tier. FastAPI can remain for the media workers. Confirm before building.
+FastAPI can remain for the media workers. Confirm before building.
 
 ## Repo layout (planned)
 
