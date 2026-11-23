@@ -90,6 +90,7 @@ if (-not (Test-Path $py)) {
   & $py -m pip install --upgrade pip | Out-Null
 }
 & $py -m pip install -q -r (Join-Path $media "requirements.txt") faster-whisper
+if ($LASTEXITCODE -ne 0) { throw "Installing the Python packages failed. Check your internet and free disk space, then run this again." }
 
 # ---- keep the PC awake while this window is open ----
 Add-Type -Namespace Win -Name Power -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
