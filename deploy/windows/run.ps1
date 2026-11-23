@@ -80,18 +80,20 @@ $env:WORKER_CONCURRENCY = "1"
 $env:WORK_ROOT = Join-Path $Root "work"
 New-Item -ItemType Directory -Force -Path $env:WORK_ROOT | Out-Null
 
-# ---- code: fresh copy each start ----
-$zip = Join-Path $Root "code.zip"
-Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Priest98/Video-studio/archive/refs/heads/main.zip" -OutFile $zip
-# Each start unpacks into its own fresh folder, so a locked leftover can never block it. Old ones are cleaned up when possible.
-Get-ChildItem -Path $Root -Directory -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -like "src*" -or $_.Name -like "Video-studio-*" -or $_.Name -like "unpack-*" } |
-  ForEach-Object { Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue }
-$stamp = Get-Date -Format "yyyyMMddHHmmss"
-$unpack = Join-Path $Root "unpack-$stamp"
-Expand-Archive -Path $zip -DestinationPath $unpack -Force
-$src = Join-Path $unpack "Video-studio-main"   # used where it was unpacked: renaming gets blocked by antivirus on some PCs
-$media = Join-Path $src "workers\media"
+# ---- code: fetch the worker files straight from GitHub (no zip, so nothing to unpack or rename) ----
+$media = Join-Path $Root "media"
+$repoRaw = "https://raw.githubusercontent.com/Priest98/Video-studio/main"
+$tree = Invoke-RestMethod -UseBasicParsing -Headers @{ "User-Agent" = "video-studio-worker" } -Uri "https://api.github.com/repos/Priest98/Video-studio/git/trees/main?recursive=1"
+$files = $tree.tree | Where-Object { $_.type -eq "blob" -and $_.path -like "workers/media/*" -and $_.path -notlike "workers/media/tests/*" -and $_.path -ne "workers/media/Dockerfile" }
+if (-not $files) { throw "Could not read the file list from GitHub. Check your internet and run this again." }
+Write-Host ("Fetching {0} worker files ..." -f @($files).Count)
+$nonce = (Get-Date).Ticks
+foreach ($f in $files) {
+  $rel = $f.path.Substring("workers/media/".Length).Replace("/", "\")
+  $dest = Join-Path $media $rel
+  New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+  Invoke-WebRequest -UseBasicParsing -Uri ("$repoRaw/" + $f.path + "?t=$nonce") -OutFile $dest
+}
 
 # ---- python environment (first run only) ----
 $venv = Join-Path $Root "venv"
