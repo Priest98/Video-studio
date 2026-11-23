@@ -77,6 +77,9 @@ foreach ($k in $keys) {
 $lines = $keys | ForEach-Object { "$_=" + [Environment]::GetEnvironmentVariable($_) }
 Set-Content -Path $EnvFile -Value $lines -Encoding ASCII
 $env:WORKER_CONCURRENCY = "1"
+# Faster on a laptop: smaller speech model and a quicker video encoder preset.
+if (-not $env:WHISPER_MODEL) { $env:WHISPER_MODEL = "base" }
+if (-not $env:RENDER_PRESET) { $env:RENDER_PRESET = "veryfast" }
 $env:WORK_ROOT = Join-Path $Root "work"
 New-Item -ItemType Directory -Force -Path $env:WORK_ROOT | Out-Null
 

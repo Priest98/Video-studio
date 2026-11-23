@@ -114,7 +114,7 @@ def _run(job_id: str, req: JobRequest, uploader=None):
         src = _acquire(job_id, req)
         job["source_seconds"] = probe(src).duration
         _, outputs = run_pipeline(
-            src, os.path.join(WORK_ROOT, job_id), FasterWhisperTranscriber(),
+            src, os.path.join(WORK_ROOT, job_id), FasterWhisperTranscriber(os.environ.get("WHISPER_MODEL", "small")),
             JobSettings(req.selection, req.caption_style, req.caption_mode, req.quality, req.max_clip_bytes,
                         req.narrations, req.voice, req.voice_mode),
             selector=_selector(), tts=_tts(), progress=lambda s, p: job.update(stage=s, progress=round(p, 2)),

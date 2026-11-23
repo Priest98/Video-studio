@@ -15,6 +15,8 @@ QUALITY = {
 }
 MAX_CRF = 34
 
+DEFAULT_PRESET = os.environ.get("RENDER_PRESET", "medium")  # "veryfast" renders much quicker on a laptop
+
 
 @dataclass
 class AudioMix:
@@ -49,7 +51,7 @@ def _filter_path(p: str) -> str:
 
 def build_command(
     src: str, out: str, start: float, end: float, crop: str, ass_path: str | None,
-    crf: int, audio_kbps: int, mix: AudioMix | None = None, preset: str = "medium", has_audio: bool = True,
+    crf: int, audio_kbps: int, mix: AudioMix | None = None, preset: str = DEFAULT_PRESET, has_audio: bool = True,
 ) -> list[str]:
     dur = end - start
     mix = mix or AudioMix()
@@ -102,7 +104,7 @@ def build_command(
 
 def render_clip(
     src: str, out: str, start: float, end: float, crop: str, ass_path: str | None,
-    quality: str = "standard", mix: AudioMix | None = None, max_bytes: int | None = None, preset: str = "medium",
+    quality: str = "standard", mix: AudioMix | None = None, max_bytes: int | None = None, preset: str = DEFAULT_PRESET,
 ) -> RenderResult:
     """Render, then re-encode at a higher CRF (up to MAX_CRF) while the file exceeds max_bytes."""
     info = probe(src)
