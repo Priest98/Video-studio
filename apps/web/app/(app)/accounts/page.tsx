@@ -6,35 +6,36 @@ import { disconnectOyinca } from "./actions";
 async function Connections() {
   const { supabase } = await currentWorkspace();
   const [conns, accounts] = await Promise.all([
-    supabase.from("oyinca_connections").select("id, label, status, permission_level"),
-    supabase.from("oyinca_accounts").select("id, connection_id, platform, handle, can_submit"),
+    supabase.from("oyinca_connections").select("id, label, status"),
+    supabase.from("oyinca_accounts").select("id, connection_id, platform, handle"),
   ]);
-  if (!conns.data?.length) return <p className="text-sm text-black/60">No Oyinca accounts connected.</p>;
+  if (!conns.data?.length) return null;
   return (
-    <div className="flex flex-col gap-4">
+    <ul className="flex flex-col divide-y divide-line border-y border-line">
       {conns.data.map((c) => (
-        <section key={c.id} className="rounded-lg border p-4 text-sm">
-          <div className="flex items-center justify-between">
-            <p className="font-medium">{c.label} <span className="text-black/60">({c.status}{c.permission_level ? `, ${c.permission_level}` : ""})</span></p>
-            <form action={disconnectOyinca}><input type="hidden" name="id" value={c.id} /><button className="text-xs underline">Disconnect</button></form>
+        <li key={c.id} className="flex flex-col gap-2 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <p className="min-w-0 truncate font-medium">{c.label}{c.status === "expired" && <span className="ml-2 text-danger">Reconnect needed</span>}</p>
+            <form action={disconnectOyinca}>
+              <input type="hidden" name="id" value={c.id} />
+              <button className="rounded-lg px-3 py-2 text-[15px] font-medium text-ink-2 underline underline-offset-4">Disconnect</button>
+            </form>
           </div>
-          <ul className="mt-2 list-disc pl-5">
-            {(accounts.data ?? []).filter((a) => a.connection_id === c.id).map((a) => (
-              <li key={a.id}>{a.platform} {a.handle} {a.can_submit ? "" : "(view only)"}</li>
-            ))}
-          </ul>
-        </section>
+          <p className="text-[15px] text-ink-2">
+            {(accounts.data ?? []).filter((a) => a.connection_id === c.id).map((a) => `${a.platform.toLowerCase()} ${a.handle ?? ""}`.trim()).join(", ") || "No accounts found"}
+          </p>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
 export default function Page() {
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Connected Accounts</h1>
+    <div className="flex flex-col gap-8">
+      <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">Connect Oyinca</h1>
       <ConnectForm />
-      <Suspense fallback={<p className="text-sm text-black/60">Loading...</p>}><Connections /></Suspense>
+      <Suspense fallback={<p className="text-muted">Loading...</p>}><Connections /></Suspense>
     </div>
   );
 }

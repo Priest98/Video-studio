@@ -59,3 +59,7 @@ No billing for now: the upgrade button is hidden unless `STRIPE_SECRET_KEY` and 
 ## Open mode (no login)
 
 Set `AUTH_MODE=open` to remove sign-up and sign-in. Every visitor acts as the owner of the oldest workspace via the service-role client, so anyone with the URL can use the app, storage, worker and connected Oyinca accounts. Unset it to restore normal login. Create one account first (with the flag unset) so a workspace exists.
+
+## Screens
+
+Three steps: paste a link (or upload), pick a caption style, tap Make my clips. Pages: `/` create, `/projects` My clips, `/projects/[id]` progress and results, `/distribution` Send to Oyinca, `/accounts` Connect Oyinca. Defaults: 5 clips, 30-60 seconds, word-by-word captions, standard quality. Styling follows the Oyinca design tokens (`app/globals.css`).

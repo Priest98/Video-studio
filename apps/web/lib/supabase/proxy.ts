@@ -10,7 +10,7 @@ export async function updateSession(request: NextRequest) {
     // No login: the sign-in pages just forward to the app.
     if (PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p))) {
       const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      url.pathname = "/";
       return NextResponse.redirect(url);
     }
     return NextResponse.next({ request });
@@ -43,7 +43,7 @@ export async function updateSession(request: NextRequest) {
   }
   if (signedIn && isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
   return response;

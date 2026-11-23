@@ -1,21 +1,24 @@
 import { Suspense } from "react";
 import { currentWorkspace } from "@/lib/workspace";
-import Studio from "./studio";
+import Send from "./studio";
 
-async function Content() {
-  const { supabase } = await currentWorkspace();
+async function Content({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+  const { project } = await searchParams;
+  const { supabase, workspaceId } = await currentWorkspace();
+  let q = supabase.from("clips").select("id").eq("workspace_id", workspaceId).not("storage_path", "is", null).order("start_seconds");
+  if (project) q = q.eq("project_id", project);
   const [clips, accounts] = await Promise.all([
-    supabase.from("clips").select("id, title").order("created_at", { ascending: false }).limit(200),
-    supabase.from("oyinca_accounts").select("id, platform, handle").eq("can_submit", true),
+    q.limit(50),
+    supabase.from("oyinca_accounts").select("id, platform, handle").eq("workspace_id", workspaceId).eq("can_submit", true),
   ]);
-  return <Studio clips={clips.data ?? []} accounts={accounts.data ?? []} />;
+  return <Send projectId={project} clipIds={(clips.data ?? []).map((c) => c.id)} accounts={accounts.data ?? []} />;
 }
 
-export default function Page() {
+export default function Page({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Distribution Studio</h1>
-      <Suspense fallback={<p className="text-sm text-black/60">Loading...</p>}><Content /></Suspense>
+      <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">Send to Oyinca</h1>
+      <Suspense fallback={<p className="text-muted">Loading...</p>}><Content searchParams={searchParams} /></Suspense>
     </div>
   );
 }

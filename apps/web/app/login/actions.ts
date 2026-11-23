@@ -10,7 +10,7 @@ export async function login(_: { error?: string } | undefined, formData: FormDat
     password: String(formData.get("password")),
   });
   if (error) return { error: error.message };
-  redirect("/dashboard");
+  redirect("/");
 }
 
 export async function signup(_: { error?: string; notice?: string } | undefined, formData: FormData) {
@@ -22,7 +22,7 @@ export async function signup(_: { error?: string; notice?: string } | undefined,
   });
   if (error) return { error: error.message };
   if (!data.session) return { notice: "Check your email to confirm your account." };
-  redirect("/dashboard");
+  redirect("/");
 }
 
 export async function logout() {
