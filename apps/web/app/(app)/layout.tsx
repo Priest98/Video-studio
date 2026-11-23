@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { logout } from "../login/actions";
+import { OPEN_MODE } from "@/lib/open-mode";
 
 const NAV = [
   ["Dashboard", "/dashboard"],
@@ -23,9 +24,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {label}
           </Link>
         ))}
-        <form action={logout} className="mt-auto">
-          <button className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-black/5">Log out</button>
-        </form>
+        {!OPEN_MODE && (
+          <form action={logout} className="mt-auto">
+            <button className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-black/5">Log out</button>
+          </form>
+        )}
       </aside>
       <main className="flex-1 p-8">{children}</main>
     </div>

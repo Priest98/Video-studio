@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { adminClient } from "./admin";
+import { OPEN_MODE } from "../open-mode";
 
-export async function createClient() {
+export async function createClient(): Promise<SupabaseClient> {
+  if (OPEN_MODE) return adminClient();
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

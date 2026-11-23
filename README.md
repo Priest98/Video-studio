@@ -55,3 +55,7 @@ Apply `supabase/migrations/0001_init.sql` to your Supabase project first. Phase 
 ## Free mode
 
 No billing for now: the upgrade button is hidden unless `STRIPE_SECRET_KEY` and `STRIPE_PRICE_PRO` are set. Free-plan limits are in `supabase/migrations/0004_free_mode_limits.sql`. Migrations 0001-0005 are applied to the Video Studio Supabase project (`pdvykqexqmustqmsnbpa`).
+
+## Open mode (no login)
+
+Set `AUTH_MODE=open` to remove sign-up and sign-in. Every visitor acts as the owner of the oldest workspace via the service-role client, so anyone with the URL can use the app, storage, worker and connected Oyinca accounts. Unset it to restore normal login. Create one account first (with the flag unset) so a workspace exists.
