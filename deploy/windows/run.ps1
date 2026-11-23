@@ -90,9 +90,7 @@ Get-ChildItem -Path $Root -Directory -ErrorAction SilentlyContinue |
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
 $unpack = Join-Path $Root "unpack-$stamp"
 Expand-Archive -Path $zip -DestinationPath $unpack -Force
-$src = Join-Path $Root "src-$stamp"
-Move-Item -Path (Join-Path $unpack "Video-studio-main") -Destination $src
-Remove-Item -Recurse -Force $unpack -ErrorAction SilentlyContinue
+$src = Join-Path $unpack "Video-studio-main"   # used where it was unpacked: renaming gets blocked by antivirus on some PCs
 $media = Join-Path $src "workers\media"
 
 # ---- python environment (first run only) ----
