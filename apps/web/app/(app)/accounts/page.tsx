@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { currentWorkspace } from "@/lib/workspace";
+import ConnectForm from "./connect-form";
+import { disconnectOyinca } from "./actions";
 
 async function Connections() {
   const { supabase } = await currentWorkspace();
@@ -12,7 +14,10 @@ async function Connections() {
     <div className="flex flex-col gap-4">
       {conns.data.map((c) => (
         <section key={c.id} className="rounded-lg border p-4 text-sm">
-          <p className="font-medium">{c.label} <span className="text-black/60">({c.status}{c.permission_level ? `, ${c.permission_level}` : ""})</span></p>
+          <div className="flex items-center justify-between">
+            <p className="font-medium">{c.label} <span className="text-black/60">({c.status}{c.permission_level ? `, ${c.permission_level}` : ""})</span></p>
+            <form action={disconnectOyinca}><input type="hidden" name="id" value={c.id} /><button className="text-xs underline">Disconnect</button></form>
+          </div>
           <ul className="mt-2 list-disc pl-5">
             {(accounts.data ?? []).filter((a) => a.connection_id === c.id).map((a) => (
               <li key={a.id}>{a.platform} {a.handle} {a.can_submit ? "" : "(view only)"}</li>
@@ -28,7 +33,7 @@ export default function Page() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Connected Accounts</h1>
-      <button disabled title="Needs Oyinca's partner API (see docs/oyinca-integration.md)" className="w-fit rounded border px-3 py-1.5 text-sm opacity-40">Connect Oyinca</button>
+      <ConnectForm />
       <Suspense fallback={<p className="text-sm text-black/60">Loading...</p>}><Connections /></Suspense>
     </div>
   );

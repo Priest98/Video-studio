@@ -41,3 +41,21 @@ Requirements on Oyinca's side:
 `apps/web/lib/oyinca/client.ts` is the adapter. Its endpoint paths are configuration (`PROPOSED_PATHS`), not facts, and it exposes no publish method. `transfer.ts` handles per-item status, idempotency keys, retries (3 attempts on transient errors), expired credentials, and failure isolation between accounts. Tests cover each case against a fake client.
 
 Until Oyinca ships the contract, "Connect Oyinca" and "Send to Oyinca" stay disabled in the UI.
+
+## Partner API patch (drafted, not applied to Oyinca)
+
+`docs/oyinca-patch/0001-partner-api.patch` is a `git format-patch` against Oyinca's repo (branch `feat/partner-api`, local only, never pushed). Apply with `git am docs/oyinca-patch/0001-partner-api.patch` after review.
+
+What it adds:
+- `PartnerConnection` (sha256-hashed `ptk_` tokens, scopes, expiry, revocation) and `PartnerSubmission` (unique per connection + Idempotency-Key). Migration included.
+- `GET /partner/v1/accounts` and `POST /partner/v1/approval-queue/submissions`. There is no publish route. Submissions create a `NEEDS_APPROVAL` post with no schedule.
+- `POST/GET/DELETE /integrations/partner-tokens` (JWT-protected) so a signed-in Oyinca user issues, lists and revokes tokens. The token is shown once.
+- Submissions reuse `MediaService.uploadAsset`, so MIME, magic-byte and storage-limit checks still apply. Video fetch is https-only with a host allowlist (`PARTNER_ALLOWED_VIDEO_HOSTS`), no redirects, and a size cap (`PARTNER_MAX_VIDEO_BYTES`, default 100 MB).
+
+Not verified: `npm ci` failed in the Oyinca workspace, so the Nest code has not been compiled. Only `partner.util` is tested (6 tests). Run `prisma generate`, `tsc` and a manual end-to-end test before merging. Check the `Post`/`PostMedia`/`PostTarget`/`MediaAsset` field names used in `partner.service.ts` against your schema. The serverless memory limit may force a lower size cap. An OAuth consent screen can later replace manual token paste.
+
+## Video Studio side
+
+- Connect: paste the `ptk_` token on the Accounts page. It is verified against `/partner/v1/accounts`, then stored AES-256-GCM encrypted (`TOKEN_ENCRYPTION_KEY`, 32 bytes base64) in `oyinca_credentials`. Accounts are synced.
+- Send: "Send to Oyinca" on a saved plan creates one transfer per item (unique idempotency key), submits with up to 3 attempts, flags the connection expired on auth errors, and isolates failures per item.
+- Required env: `OYINCA_API_URL`, `TOKEN_ENCRYPTION_KEY`.

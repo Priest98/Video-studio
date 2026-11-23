@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { scheduleSequences, shuffleAssignments, type Assignments } from "@/lib/distribution/shuffle";
-import { savePlan } from "./actions";
+import { savePlan, sendPlan } from "./actions";
 
 interface Clip { id: string; title: string | null; }
 interface Account { id: string; platform: string; handle: string | null; }
@@ -17,6 +17,7 @@ export default function Studio({ clips, accounts }: { clips: Clip[]; accounts: A
   const [gap, setGap] = useState(90);
   const [start, setStart] = useState(() => new Date(Date.now() + 3600_000).toISOString().slice(0, 16));
   const [message, setMessage] = useState("");
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const key = (c: string, a: string) => `${c}:${a}`;
@@ -54,8 +55,17 @@ export default function Studio({ clips, accounts }: { clips: Clip[]; accounts: A
     catch { return []; }
   }, [current, start, interval, gap]);
 
+  const send = () => startTransition(async () => {
+    if (!savedId) return;
+    const res = await sendPlan(savedId);
+    if (res.error || !res.results) { setMessage(res.error ?? "Could not send."); return; }
+    const r = res.results;
+    setMessage(`${r.awaiting_approval} awaiting approval in Oyinca, ${r.pending} to retry, ${r.failed} failed.`);
+  });
+
   const save = () => startTransition(async () => {
     const res = await savePlan({ name, seed, intervalMinutes: interval, minGapMinutes: gap, startAt: new Date(start).toISOString(), sequences: current });
+    setSavedId(res.id ?? null);
     setMessage(res.error ?? "Plan saved.");
   });
 
@@ -109,7 +119,7 @@ export default function Studio({ clips, accounts }: { clips: Clip[]; accounts: A
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Plan name" className="rounded border p-1.5" />
         <button onClick={save} disabled={pending || !Object.keys(current).length} className="rounded bg-black px-3 py-1.5 text-white disabled:opacity-40">Save plan</button>
-        <button disabled title="Needs Oyinca's partner API (see docs/oyinca-integration.md)" className="rounded border px-3 py-1.5 opacity-40">Send to Oyinca</button>
+        <button onClick={send} disabled={pending || !savedId} title={savedId ? "Submit to Oyinca approval queues" : "Save the plan first"} className="rounded border px-3 py-1.5 disabled:opacity-40">Send to Oyinca</button>
         {message && <span>{message}</span>}
       </div>
       <p className="text-xs text-black/50">Shuffling sets each account&apos;s order and spacing. It does not stop platforms recognising reused video. Nothing publishes without approval in Oyinca.</p>

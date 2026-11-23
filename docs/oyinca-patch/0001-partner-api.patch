@@ -1,0 +1,516 @@
+From 483a70bb81f25ed28b89319430aba5c3141edea3 Mon Sep 17 00:00:00 2001
+From: Adam <noreply@anthropic.com>
+Date: Mon, 23 Nov 2026 09:53:45 +0100
+Subject: [PATCH] Add partner API: revocable tokens and idempotent
+ approval-queue submissions
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KHJsyGdPeGGrFqeQJs1iwM
+---
+ .../20261123100000_partner_api/migration.sql  |  30 ++++
+ apps/api/prisma/schema.prisma                 |  31 ++++
+ apps/api/src/app.module.ts                    |   3 +-
+ apps/api/src/media/media.module.ts            |   1 +
+ apps/api/src/partner/partner-token.guard.ts   |  37 +++++
+ apps/api/src/partner/partner.controller.ts    |  48 +++++++
+ apps/api/src/partner/partner.module.ts        |  13 ++
+ apps/api/src/partner/partner.service.ts       | 134 ++++++++++++++++++
+ apps/api/src/partner/partner.util.test.ts     |  43 ++++++
+ apps/api/src/partner/partner.util.ts          |  67 +++++++++
+ 10 files changed, 406 insertions(+), 1 deletion(-)
+ create mode 100644 apps/api/prisma/migrations/20261123100000_partner_api/migration.sql
+ create mode 100644 apps/api/src/partner/partner-token.guard.ts
+ create mode 100644 apps/api/src/partner/partner.controller.ts
+ create mode 100644 apps/api/src/partner/partner.module.ts
+ create mode 100644 apps/api/src/partner/partner.service.ts
+ create mode 100644 apps/api/src/partner/partner.util.test.ts
+ create mode 100644 apps/api/src/partner/partner.util.ts
+
+diff --git a/apps/api/prisma/migrations/20261123100000_partner_api/migration.sql b/apps/api/prisma/migrations/20261123100000_partner_api/migration.sql
+new file mode 100644
+index 0000000..e5e455f
+--- /dev/null
++++ b/apps/api/prisma/migrations/20261123100000_partner_api/migration.sql
+@@ -0,0 +1,30 @@
++-- Partner API: revocable integration tokens and idempotent submissions into the approval queue.
++CREATE TABLE "PartnerConnection" (
++  "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
++  "userId" TEXT NOT NULL,
++  "partner" TEXT NOT NULL,
++  "label" TEXT NOT NULL,
++  "tokenHash" TEXT NOT NULL,
++  "scopes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
++  "expiresAt" TIMESTAMPTZ(6) NOT NULL,
++  "revokedAt" TIMESTAMPTZ(6),
++  "lastUsedAt" TIMESTAMPTZ(6),
++  "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  CONSTRAINT "PartnerConnection_pkey" PRIMARY KEY ("id")
++);
++CREATE UNIQUE INDEX "PartnerConnection_tokenHash_key" ON "PartnerConnection"("tokenHash");
++CREATE INDEX "PartnerConnection_userId_idx" ON "PartnerConnection"("userId");
++
++CREATE TABLE "PartnerSubmission" (
++  "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
++  "connectionId" TEXT NOT NULL,
++  "idempotencyKey" TEXT NOT NULL,
++  "brandId" TEXT NOT NULL,
++  "postId" TEXT,
++  "mediaAssetId" TEXT,
++  "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  CONSTRAINT "PartnerSubmission_pkey" PRIMARY KEY ("id")
++);
++CREATE UNIQUE INDEX "PartnerSubmission_connectionId_idempotencyKey_key" ON "PartnerSubmission"("connectionId", "idempotencyKey");
++ALTER TABLE "PartnerSubmission" ADD CONSTRAINT "PartnerSubmission_connectionId_fkey"
++  FOREIGN KEY ("connectionId") REFERENCES "PartnerConnection"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+diff --git a/apps/api/prisma/schema.prisma b/apps/api/prisma/schema.prisma
+index 471e7ed..f4fc040 100644
+--- a/apps/api/prisma/schema.prisma
++++ b/apps/api/prisma/schema.prisma
+@@ -1501,3 +1501,34 @@ model MarketingAttributionEvent {
+   @@index([utmSource], map: "idx_attr_utm_source")
+   @@index([createdAt], map: "idx_attr_created")
+ }
++
++/// A revocable token a user issues so a partner app (e.g. Video Studio) can submit into the approval queue.
++/// Only the SHA-256 hash is stored; the token is shown once at creation.
++model PartnerConnection {
++  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
++  userId     String
++  partner    String
++  label      String
++  tokenHash  String   @unique
++  scopes     String[] @default([])
++  expiresAt  DateTime @db.Timestamptz(6)
++  revokedAt  DateTime? @db.Timestamptz(6)
++  lastUsedAt DateTime? @db.Timestamptz(6)
++  createdAt  DateTime @default(now()) @db.Timestamptz(6)
++  submissions PartnerSubmission[]
++
++  @@index([userId])
++}
++
++model PartnerSubmission {
++  id             String   @id @default(dbgenerated("(gen_random_uuid())::text"))
++  connectionId   String
++  idempotencyKey String
++  brandId        String
++  postId         String?
++  mediaAssetId   String?
++  createdAt      DateTime @default(now()) @db.Timestamptz(6)
++  connection     PartnerConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
++
++  @@unique([connectionId, idempotencyKey])
++}
+diff --git a/apps/api/src/app.module.ts b/apps/api/src/app.module.ts
+index c3d64f8..0a24baf 100644
+--- a/apps/api/src/app.module.ts
++++ b/apps/api/src/app.module.ts
+@@ -24,6 +24,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+ import { APP_GUARD } from '@nestjs/core';
+ import { CapabilitiesModule } from './capabilities/capabilities.module';
+ import { DashboardModule } from './dashboard/dashboard.module';
++import { PartnerModule } from './partner/partner.module';
+ 
+ @Module({
+   imports: [
+@@ -32,7 +33,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
+       limit: 10,
+     }]),
+     EventEmitterModule.forRoot(),
+-    PrismaModule, AuthModule, EncryptionModule, StorageModule, MediaModule, PostsModule, QueueModule, AiModule, EngineModule, GrowthModule, WebhooksModule, OAuthModule, BusinessBrainModule, BillingModule, BrandsModule, AdminModule, ProductsModule, MarketingModule, CapabilitiesModule, DashboardModule
++    PrismaModule, AuthModule, EncryptionModule, StorageModule, MediaModule, PostsModule, QueueModule, AiModule, EngineModule, GrowthModule, WebhooksModule, OAuthModule, BusinessBrainModule, BillingModule, BrandsModule, AdminModule, ProductsModule, MarketingModule, CapabilitiesModule, DashboardModule, PartnerModule
+   ],
+   controllers: [AppController],
+   providers: [
+diff --git a/apps/api/src/media/media.module.ts b/apps/api/src/media/media.module.ts
+index 71c2247..577b513 100644
+--- a/apps/api/src/media/media.module.ts
++++ b/apps/api/src/media/media.module.ts
+@@ -10,5 +10,6 @@ import { BillingModule } from '../billing/billing.module';
+   imports: [EngineModule, MediaOptimizationModule, BillingModule],
+   controllers: [MediaController, MediaProxyController],
+   providers: [MediaService],
++  exports: [MediaService],
+ })
+ export class MediaModule {}
+diff --git a/apps/api/src/partner/partner-token.guard.ts b/apps/api/src/partner/partner-token.guard.ts
+new file mode 100644
+index 0000000..dd2cc78
+--- /dev/null
++++ b/apps/api/src/partner/partner-token.guard.ts
+@@ -0,0 +1,37 @@
++import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
++import { Reflector } from '@nestjs/core';
++import { PrismaService } from '../prisma/prisma.service';
++import { hashToken, TOKEN_PREFIX, type PartnerScope } from './partner.util';
++
++export const REQUIRED_SCOPE = 'partner:required-scope';
++export const RequireScope = (scope: PartnerScope) => SetMetadata(REQUIRED_SCOPE, scope);
++
++export interface PartnerRequestContext {
++  connectionId: string;
++  userId: string;
++  scopes: string[];
++}
++
++/** Authenticates `Authorization: Bearer ptk_...` partner tokens. Tenant is always derived from the token owner, never from input. */
++@Injectable()
++export class PartnerTokenGuard implements CanActivate {
++  constructor(private readonly prisma: PrismaService, private readonly reflector: Reflector) {}
++
++  async canActivate(context: ExecutionContext): Promise<boolean> {
++    const request = context.switchToHttp().getRequest();
++    const header: string = request.headers?.authorization ?? '';
++    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
++    if (!token.startsWith(TOKEN_PREFIX)) throw new UnauthorizedException('Invalid or expired token.');
++
++    const conn = await this.prisma.partnerConnection.findUnique({ where: { tokenHash: hashToken(token) } });
++    if (!conn || conn.revokedAt || conn.expiresAt <= new Date()) throw new UnauthorizedException('Invalid or expired token.');
++
++    const needed = this.reflector.get<PartnerScope | undefined>(REQUIRED_SCOPE, context.getHandler());
++    if (needed && !conn.scopes.includes(needed)) throw new ForbiddenException('This token does not have the required scope.');
++
++    request.partner = { connectionId: conn.id, userId: conn.userId, scopes: conn.scopes } satisfies PartnerRequestContext;
++    // Best effort; never blocks the request.
++    void this.prisma.partnerConnection.update({ where: { id: conn.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
++    return true;
++  }
++}
+diff --git a/apps/api/src/partner/partner.controller.ts b/apps/api/src/partner/partner.controller.ts
+new file mode 100644
+index 0000000..b3e9689
+--- /dev/null
++++ b/apps/api/src/partner/partner.controller.ts
+@@ -0,0 +1,48 @@
++import { Body, Controller, Delete, Get, Headers, Param, Post, Req, UseGuards } from '@nestjs/common';
++import { Throttle } from '@nestjs/throttler';
++import { JwtAuthGuard } from '../auth/jwt-auth.guard';
++import { PartnerService, type SubmitDto } from './partner.service';
++import { PartnerTokenGuard, RequireScope } from './partner-token.guard';
++
++/** Partner-facing API. There is deliberately no publish route: partners can only submit into the approval queue. */
++@Controller('partner/v1')
++@UseGuards(PartnerTokenGuard)
++export class PartnerController {
++  constructor(private readonly partner: PartnerService) {}
++
++  @Get('accounts')
++  @RequireScope('accounts:read')
++  accounts(@Req() req: any) {
++    return this.partner.listAccounts(req.partner.userId);
++  }
++
++  @Post('approval-queue/submissions')
++  @RequireScope('submissions:create')
++  @Throttle({ default: { limit: 60, ttl: 60_000 } })
++  submit(@Req() req: any, @Headers('idempotency-key') key: string, @Body() body: SubmitDto) {
++    return this.partner.submit(req.partner, key, body);
++  }
++}
++
++/** Signed-in users manage their own partner tokens. */
++@Controller('integrations/partner-tokens')
++@UseGuards(JwtAuthGuard)
++export class PartnerTokenController {
++  constructor(private readonly partner: PartnerService) {}
++
++  @Post()
++  @Throttle({ default: { limit: 10, ttl: 60_000 } })
++  issue(@Req() req: any, @Body() body: { label?: string; partner?: string; scopes?: string[]; ttlDays?: number }) {
++    return this.partner.issueToken(req.user.id, body);
++  }
++
++  @Get()
++  list(@Req() req: any) {
++    return this.partner.listTokens(req.user.id);
++  }
++
++  @Delete(':id')
++  revoke(@Req() req: any, @Param('id') id: string) {
++    return this.partner.revokeToken(req.user.id, id);
++  }
++}
+diff --git a/apps/api/src/partner/partner.module.ts b/apps/api/src/partner/partner.module.ts
+new file mode 100644
+index 0000000..f84a22f
+--- /dev/null
++++ b/apps/api/src/partner/partner.module.ts
+@@ -0,0 +1,13 @@
++import { Module } from '@nestjs/common';
++import { PrismaModule } from '../prisma/prisma.module';
++import { MediaModule } from '../media/media.module';
++import { PartnerController, PartnerTokenController } from './partner.controller';
++import { PartnerService } from './partner.service';
++import { PartnerTokenGuard } from './partner-token.guard';
++
++@Module({
++  imports: [PrismaModule, MediaModule],
++  controllers: [PartnerController, PartnerTokenController],
++  providers: [PartnerService, PartnerTokenGuard],
++})
++export class PartnerModule {}
+diff --git a/apps/api/src/partner/partner.service.ts b/apps/api/src/partner/partner.service.ts
+new file mode 100644
+index 0000000..5ad9917
+--- /dev/null
++++ b/apps/api/src/partner/partner.service.ts
+@@ -0,0 +1,134 @@
++import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
++import { MediaStatus } from '@prisma/client';
++import { PrismaService } from '../prisma/prisma.service';
++import { MediaService } from '../media/media.service';
++import {
++  assertSafeVideoUrl, generateToken, handleFromMetadata, normaliseScopes, parseAllowedHosts, readCapped,
++} from './partner.util';
++
++export interface SubmitDto {
++  brandId: string;
++  accountId: string;
++  videoUrl: string;
++  filename: string;
++  mimeType: string;
++  sizeBytes?: number;
++  title?: string;
++  caption?: string;
++  thumbnailUrl?: string;
++  suggestedPublishAt?: string;
++}
++
++@Injectable()
++export class PartnerService {
++  private readonly logger = new Logger(PartnerService.name);
++  constructor(private readonly prisma: PrismaService, private readonly media: MediaService) {}
++
++  // ---- token management (called by the signed-in user) ----
++  async issueToken(userId: string, input: { label?: string; partner?: string; scopes?: unknown; ttlDays?: number }) {
++    const scopes = normaliseScopes(input.scopes);
++    if (!scopes.length) throw new BadRequestException('Choose at least one scope.');
++    const ttlDays = Math.min(Math.max(Number(input.ttlDays) || 90, 1), 365);
++    const { token, tokenHash } = generateToken();
++    const row = await this.prisma.partnerConnection.create({
++      data: {
++        userId, tokenHash, scopes, partner: String(input.partner ?? 'video-studio').slice(0, 40),
++        label: String(input.label ?? 'Video Studio').slice(0, 80), expiresAt: new Date(Date.now() + ttlDays * 86_400_000),
++      },
++    });
++    return { id: row.id, token, scopes, expiresAt: row.expiresAt }; // the token is returned once and never stored
++  }
++
++  listTokens(userId: string) {
++    return this.prisma.partnerConnection.findMany({
++      where: { userId }, orderBy: { createdAt: 'desc' },
++      select: { id: true, partner: true, label: true, scopes: true, expiresAt: true, revokedAt: true, lastUsedAt: true, createdAt: true },
++    });
++  }
++
++  async revokeToken(userId: string, id: string) {
++    const res = await this.prisma.partnerConnection.updateMany({ where: { id, userId, revokedAt: null }, data: { revokedAt: new Date() } });
++    return { revoked: res.count === 1 };
++  }
++
++  // ---- partner API ----
++  async listAccounts(userId: string) {
++    const accounts = await this.prisma.socialAccount.findMany({
++      where: { brand: { organization: { members: { some: { userId } } } } },
++      select: { id: true, brandId: true, platform: true, metadata: true, status: true },
++    });
++    return accounts.map((a) => ({
++      brandId: a.brandId, accountId: a.id, platform: String(a.platform), handle: handleFromMetadata(a.metadata),
++      canSubmit: a.status === 'CONNECTED',
++    }));
++  }
++
++  async submit(ctx: { connectionId: string; userId: string }, idempotencyKey: string, dto: SubmitDto) {
++    if (!idempotencyKey || idempotencyKey.length > 200) throw new BadRequestException('Idempotency-Key header is required.');
++
++    const existing = await this.prisma.partnerSubmission.findUnique({
++      where: { connectionId_idempotencyKey: { connectionId: ctx.connectionId, idempotencyKey } },
++    });
++    if (existing) return { assetId: existing.mediaAssetId ?? existing.postId, state: 'awaiting_approval' as const };
++
++    // Same rejection for "no such brand" and "not yours", so ids cannot be probed.
++    const account = await this.prisma.socialAccount.findFirst({
++      where: { id: dto.accountId, brandId: dto.brandId, status: 'CONNECTED', brand: { organization: { members: { some: { userId: ctx.userId } } } } },
++      select: { id: true, platform: true },
++    });
++    if (!account) throw new ForbiddenException('You do not have access to this account.');
++    if (dto.mimeType !== 'video/mp4') throw new BadRequestException('Only video/mp4 is accepted.');
++
++    let url: URL;
++    try { url = assertSafeVideoUrl(dto.videoUrl, parseAllowedHosts(process.env.PARTNER_ALLOWED_VIDEO_HOSTS)); }
++    catch (e) { throw new BadRequestException((e as Error).message); }
++
++    const maxBytes = Number(process.env.PARTNER_MAX_VIDEO_BYTES ?? 100 * 1024 * 1024);
++    let buffer: Buffer;
++    try {
++      const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(60_000) });
++      if (!res.ok) throw new Error(`video fetch failed (${res.status})`);
++      if (Number(res.headers.get('content-length') ?? 0) > maxBytes) throw new Error('video exceeds the size limit');
++      buffer = await readCapped(res.body, maxBytes);
++    } catch (e) {
++      throw new BadRequestException((e as Error).message);
++    }
++
++    // MediaService enforces the MIME whitelist, magic-byte check, plan storage limit and writes the asset record.
++    const asset = await this.media.uploadAsset(
++      dto.brandId,
++      { buffer, originalname: dto.filename, mimetype: 'video/mp4', size: buffer.length } as Express.Multer.File,
++      undefined, ctx.userId,
++    );
++
++    try {
++      const post = await this.prisma.$transaction(async (tx) => {
++        // NEEDS_APPROVAL with no schedule: Oyinca's own approval and scheduling decide everything after this.
++        const created = await tx.post.create({
++          data: {
++            brandId: dto.brandId, caption: String(dto.caption ?? dto.title ?? '').slice(0, 2200), status: 'NEEDS_APPROVAL',
++            postType: 'SINGLE', contentCategory: 'partner:video-studio',
++            media: { create: [{ assetId: asset.id, order: 0 }] },
++            targets: { create: [{ socialAccountId: account.id, platform: account.platform }] },
++          },
++        });
++        await tx.mediaAsset.update({ where: { id: asset.id }, data: { linkedPostId: created.id, status: MediaStatus.READY } });
++        await tx.partnerSubmission.create({
++          data: { connectionId: ctx.connectionId, idempotencyKey, brandId: dto.brandId, postId: created.id, mediaAssetId: asset.id },
++        });
++        return created;
++      });
++      return { assetId: asset.id, postId: post.id, state: 'awaiting_approval' as const };
++    } catch (e) {
++      // A concurrent request with the same key won the race: return its result instead of failing.
++      const winner = await this.prisma.partnerSubmission.findUnique({
++        where: { connectionId_idempotencyKey: { connectionId: ctx.connectionId, idempotencyKey } },
++      });
++      if (winner) {
++        this.logger.warn(`Duplicate partner submission resolved by idempotency key; orphan asset ${asset.id} may need cleanup`);
++        return { assetId: winner.mediaAssetId ?? winner.postId, state: 'awaiting_approval' as const };
++      }
++      throw e;
++    }
++  }
++}
+diff --git a/apps/api/src/partner/partner.util.test.ts b/apps/api/src/partner/partner.util.test.ts
+new file mode 100644
+index 0000000..d40d348
+--- /dev/null
++++ b/apps/api/src/partner/partner.util.test.ts
+@@ -0,0 +1,43 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { assertSafeVideoUrl, generateToken, handleFromMetadata, hashToken, normaliseScopes, readCapped } from './partner.util.ts';
++
++const hosts = ['files.example.com'];
++
++test('tokens are prefixed, unique, and only the hash is derivable', () => {
++  const a = generateToken(), b = generateToken();
++  assert.ok(a.token.startsWith('ptk_') && a.token !== b.token);
++  assert.equal(hashToken(a.token), a.tokenHash);
++  assert.notEqual(a.tokenHash, a.token);
++});
++
++test('scopes are filtered to the known set and de-duplicated', () => {
++  assert.deepEqual(normaliseScopes(['submissions:create', 'admin', 'submissions:create', 7]), ['submissions:create']);
++  assert.deepEqual(normaliseScopes(undefined), []);
++});
++
++test('video URL guard accepts allowlisted https hosts and subdomains', () => {
++  assert.equal(assertSafeVideoUrl('https://files.example.com/a.mp4?sig=1', hosts).hostname, 'files.example.com');
++  assert.equal(assertSafeVideoUrl('https://acct.files.example.com/a.mp4', hosts).hostname, 'acct.files.example.com');
++});
++
++test('video URL guard blocks SSRF shapes', () => {
++  for (const bad of [
++    'http://files.example.com/a.mp4', 'https://evil.com/a.mp4', 'https://files.example.com.evil.com/a.mp4',
++    'https://127.0.0.1/a.mp4', 'https://169.254.169.254/latest/meta-data', 'https://localhost/a.mp4', 'https://[::1]/a.mp4',
++    'https://user:pw@files.example.com/a.mp4', 'https://files.example.com:8443/a.mp4', 'not a url',
++  ]) assert.throws(() => assertSafeVideoUrl(bad, hosts), undefined, bad);
++  assert.throws(() => assertSafeVideoUrl('https://files.example.com/a.mp4', []));
++});
++
++test('handle parsing tolerates bad metadata', () => {
++  assert.equal(handleFromMetadata('{"username":"adam"}'), 'adam');
++  assert.equal(handleFromMetadata('not json'), undefined);
++  assert.equal(handleFromMetadata(null), undefined);
++});
++
++test('capped reader stops oversized bodies', async () => {
++  const stream = (n: number) => new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(n)); c.close(); } });
++  assert.equal((await readCapped(stream(100), 200)).length, 100);
++  await assert.rejects(readCapped(stream(300), 200), /size limit/);
++});
+diff --git a/apps/api/src/partner/partner.util.ts b/apps/api/src/partner/partner.util.ts
+new file mode 100644
+index 0000000..2cb0e4d
+--- /dev/null
++++ b/apps/api/src/partner/partner.util.ts
+@@ -0,0 +1,67 @@
++// Pure helpers for the partner API. Kept free of Nest and Prisma imports so they can be unit tested on their own.
++import { createHash, randomBytes } from 'node:crypto';
++
++export const PARTNER_SCOPES = ['accounts:read', 'submissions:create'] as const;
++export type PartnerScope = (typeof PARTNER_SCOPES)[number];
++export const TOKEN_PREFIX = 'ptk_';
++
++export function generateToken(): { token: string; tokenHash: string } {
++  const token = TOKEN_PREFIX + randomBytes(32).toString('base64url');
++  return { token, tokenHash: hashToken(token) };
++}
++
++export function hashToken(token: string): string {
++  return createHash('sha256').update(token).digest('hex');
++}
++
++export function normaliseScopes(requested: unknown): PartnerScope[] {
++  const list = Array.isArray(requested) ? requested : [];
++  const valid = list.filter((s): s is PartnerScope => (PARTNER_SCOPES as readonly string[]).includes(s));
++  return Array.from(new Set(valid));
++}
++
++/**
++ * Only fetch partner videos from hosts the operator allowlisted (PARTNER_ALLOWED_VIDEO_HOSTS), over https, with no
++ * credentials in the URL, no IP literals and no non-default ports. This is the SSRF guard for the submission endpoint.
++ */
++export function assertSafeVideoUrl(raw: string, allowedHosts: string[]): URL {
++  let url: URL;
++  try { url = new URL(raw); } catch { throw new Error('videoUrl is not a valid URL'); }
++  if (url.protocol !== 'https:') throw new Error('videoUrl must use https');
++  if (url.username || url.password) throw new Error('videoUrl must not contain credentials');
++  if (url.port && url.port !== '443') throw new Error('videoUrl must use the default https port');
++  const host = url.hostname.toLowerCase();
++  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':') || host === 'localhost') throw new Error('videoUrl host is not allowed');
++  const ok = allowedHosts.some((h) => host === h.toLowerCase() || host.endsWith('.' + h.toLowerCase()));
++  if (!ok) throw new Error('videoUrl host is not on the allowlist');
++  return url;
++}
++
++export function parseAllowedHosts(env: string | undefined): string[] {
++  return (env ?? '').split(',').map((h) => h.trim()).filter(Boolean);
++}
++
++export function handleFromMetadata(metadata: string | null | undefined): string | undefined {
++  if (!metadata) return undefined;
++  try {
++    const m = JSON.parse(metadata);
++    const v = m?.username ?? m?.handle ?? m?.display_name ?? m?.name;
++    return typeof v === 'string' ? v.slice(0, 100) : undefined;
++  } catch { return undefined; }
++}
++
++/** Reads a response body with a hard byte cap so a hostile or huge file cannot exhaust memory. */
++export async function readCapped(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Buffer> {
++  if (!body) throw new Error('empty response');
++  const reader = body.getReader();
++  const chunks: Buffer[] = [];
++  let total = 0;
++  for (;;) {
++    const { done, value } = await reader.read();
++    if (done) break;
++    total += value.length;
++    if (total > maxBytes) { await reader.cancel(); throw new Error('video exceeds the size limit'); }
++    chunks.push(Buffer.from(value));
++  }
++  return Buffer.concat(chunks);
++}
+-- 
+2.43.0
+
