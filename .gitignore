@@ -5,3 +5,6 @@ node_modules/
 .next/
 __pycache__/
 !.env.example
+__pycache__/
+.pytest_cache/
+*.pyc
