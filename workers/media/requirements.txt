@@ -7,4 +7,4 @@ yt-dlp>=2024.8.6
 numpy>=1.26
 opencv-python-headless>=4.9
 python-multipart>=0.0.9
-av>=12,<15
+av>=12,<14.3

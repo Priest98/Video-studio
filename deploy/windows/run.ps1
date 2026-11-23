@@ -103,7 +103,7 @@ if (-not (Test-Path $py)) {
   python -m venv $venv
   & $py -m pip install --upgrade pip | Out-Null
 }
-& $py -m pip install -q -r (Join-Path $media "requirements.txt") faster-whisper
+& $py -m pip install -q --prefer-binary -r (Join-Path $media "requirements.txt") faster-whisper
 if ($LASTEXITCODE -ne 0) { throw "Installing the Python packages failed. Check your internet and free disk space, then run this again." }
 
 # ---- keep the PC awake while this window is open ----
