@@ -18,17 +18,24 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const { data: blocked } = await supabase.rpc("check_quota", { ws: workspaceId, kind: "processing", amount: minutes });
   if (blocked) return NextResponse.json({ error: `Plan limit: ${blocked}` }, { status: 402 });
 
-  const res = await fetch(`${workerUrl}/jobs`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify(workerJob(
-      project,
-      project.source_type === "youtube"
-        ? { import_url: project.source_url!, rights_confirmed: (project.settings as { rights_confirmed?: boolean })?.rights_confirmed === true }
-        : { source_url: await signedGet(project.source_path!) },
-      process.env.APP_URL ?? new URL(request.url).origin,
-    )),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${workerUrl}/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(workerJob(
+        project,
+        project.source_type === "youtube"
+          ? { import_url: project.source_url!, rights_confirmed: (project.settings as { rights_confirmed?: boolean })?.rights_confirmed === true }
+          : { source_url: await signedGet(project.source_path!) },
+        process.env.APP_URL ?? new URL(request.url).origin,
+      )),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    // Project stays queued so it can be started again once the worker is reachable.
+    return NextResponse.json({ error: "Could not reach the media worker. Check WORKER_URL and that the worker is running." }, { status: 503 });
+  }
   if (!res.ok) return NextResponse.json({ error: "Worker rejected the job." }, { status: 502 });
   const job = await res.json();
   await supabase.from("projects").update({ status: "processing", settings: { ...(project.settings as object), jobId: job.id } }).eq("id", id);
