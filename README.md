@@ -30,3 +30,13 @@ packages/       shared types
 supabase/       migrations and RLS policies
 docs/           evaluation reports
 ```
+
+## Run Phase 1 locally
+
+```
+cd apps/web
+cp .env.example .env.local   # add your Supabase URL and anon key
+npm run dev
+```
+
+Apply `supabase/migrations/0001_init.sql` to your Supabase project first. Phase 1 pages built: sign up, log in, dashboard. The other navigation pages are placeholders.
