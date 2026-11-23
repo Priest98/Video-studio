@@ -19,8 +19,8 @@ async function Usage() {
   ] as const;
   return (
     <>
-      <p className="text-sm">Plan: <b>{ws?.plan}</b>. Limits are placeholders until costs are benchmarked.</p>
-      <Upgrade />
+      <p className="text-sm">Video Studio is free for now. Limits are generous but not unlimited.</p>
+      {process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_PRO ? <Upgrade /> : null}
       <table className="w-full max-w-xl text-sm">
         <tbody>{rows.map(([label, used, max]) => (
           <tr key={label} className="border-t"><td className="py-2">{label}</td><td className="text-right">{used} / {max}</td></tr>
@@ -33,7 +33,7 @@ async function Usage() {
 export default function Page() {
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Usage and Billing</h1>
+      <h1 className="text-2xl font-semibold">Usage</h1>
       <Suspense fallback={<p className="text-sm text-black/60">Loading...</p>}><Usage /></Suspense>
     </div>
   );

@@ -50,3 +50,8 @@ npm run dev
 ```
 
 Apply `supabase/migrations/0001_init.sql` to your Supabase project first. Phase 1 pages built: sign up, log in, dashboard. The other navigation pages are placeholders.
+
+
+## Free mode
+
+No billing for now: the upgrade button is hidden unless `STRIPE_SECRET_KEY` and `STRIPE_PRICE_PRO` are set. Free-plan limits are in `supabase/migrations/0004_free_mode_limits.sql`. Migrations 0001-0005 are applied to the Video Studio Supabase project (`pdvykqexqmustqmsnbpa`).

@@ -9,7 +9,7 @@ const NAV = [
   ["Distribution Studio", "/distribution"],
   ["Connected Accounts", "/accounts"],
   ["Templates", "/templates"],
-  ["Usage and Billing", "/billing"],
+  ["Usage", "/billing"],
   ["Settings", "/settings"],
 ] as const;
 
