@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { currentWorkspace } from "@/lib/workspace";
 import { signedGet } from "@/lib/storage/r2";
 import { workerJob } from "@/lib/worker/job";
+import { adminClient } from "@/lib/supabase/admin";
+
+/** WORKER_URL wins when set; otherwise the address the worker last reported. */
+async function workerAddress(): Promise<string | undefined> {
+  // Ignore placeholder text left in the setting; only a real web address counts.
+  if (process.env.WORKER_URL && /^https?:\/\//.test(process.env.WORKER_URL)) return process.env.WORKER_URL;
+  const { data } = await adminClient().from("worker_endpoint").select("url").eq("id", 1).maybeSingle();
+  return data?.url ?? undefined;
+}
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -10,8 +19,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (project.status !== "queued") return NextResponse.json({ error: "Already started" }, { status: 409 });
 
-  const workerUrl = process.env.WORKER_URL, token = process.env.WORKER_TOKEN;
-  if (!workerUrl || !token) return NextResponse.json({ error: "Media worker is not configured." }, { status: 503 });
+  const workerUrl = await workerAddress(), token = process.env.WORKER_TOKEN;
+  if (!workerUrl || !token) return NextResponse.json({ error: "The media worker has not started yet. Start it, then try again." }, { status: 503 });
 
   const body = await request.json().catch(() => ({}));
   const minutes = Number(body.durationMinutes ?? 0);
