@@ -93,7 +93,7 @@ if (-not (Test-Path $py)) {
 
 # ---- keep the PC awake while this window is open ----
 Add-Type -Namespace Win -Name Power -MemberDefinition '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-[void][Win.Power]::SetThreadExecutionState(0x80000001)
+[void][Win.Power]::SetThreadExecutionState([uint32]2147483649)
 
 # ---- start the worker ----
 $logs = Join-Path $Root "logs"
@@ -134,5 +134,5 @@ try {
   }
 } finally {
   Stop-Process -Id $worker.Id, $tunnel.Id -Force -ErrorAction SilentlyContinue
-  [void][Win.Power]::SetThreadExecutionState(0x80000000)
+  [void][Win.Power]::SetThreadExecutionState([uint32]2147483648)
 }
