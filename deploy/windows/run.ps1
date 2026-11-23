@@ -83,10 +83,16 @@ New-Item -ItemType Directory -Force -Path $env:WORK_ROOT | Out-Null
 # ---- code: fresh copy each start ----
 $zip = Join-Path $Root "code.zip"
 Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Priest98/Video-studio/archive/refs/heads/main.zip" -OutFile $zip
-$src = Join-Path $Root "src"
-if (Test-Path $src) { Remove-Item -Recurse -Force $src }
-Expand-Archive -Path $zip -DestinationPath $Root -Force
-Rename-Item -Path (Join-Path $Root "Video-studio-main") -NewName "src"
+# Each start unpacks into its own fresh folder, so a locked leftover can never block it. Old ones are cleaned up when possible.
+Get-ChildItem -Path $Root -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -like "src*" -or $_.Name -like "Video-studio-*" -or $_.Name -like "unpack-*" } |
+  ForEach-Object { Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue }
+$stamp = Get-Date -Format "yyyyMMddHHmmss"
+$unpack = Join-Path $Root "unpack-$stamp"
+Expand-Archive -Path $zip -DestinationPath $unpack -Force
+$src = Join-Path $Root "src-$stamp"
+Move-Item -Path (Join-Path $unpack "Video-studio-main") -Destination $src
+Remove-Item -Recurse -Force $unpack -ErrorAction SilentlyContinue
 $media = Join-Path $src "workers\media"
 
 # ---- python environment (first run only) ----
