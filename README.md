@@ -1,3 +1,5 @@
+<p align="center"><img src="apps/web/public/logo.svg" alt="Video Studio logo" width="96" height="96"></p>
+
 # Video Studio
 
 Multi-user AI video repurposing SaaS: long videos in, edited 9:16 clips out, sent into Oyinca approval queues. Full brief in [SPEC.md](SPEC.md).

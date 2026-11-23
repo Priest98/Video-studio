@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import { useActionState } from "react";
 import { login } from "./actions";
 
@@ -8,6 +9,7 @@ export default function LoginPage() {
   const [state, action, pending] = useActionState(login, undefined);
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
+      <Logo />
       <h1 className="text-2xl font-semibold">Log in</h1>
       <form action={action} className="flex flex-col gap-3">
         <input name="email" type="email" required placeholder="Email" className="rounded border p-2" />

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import { useActionState } from "react";
 import { signup } from "../login/actions";
 
@@ -8,6 +9,7 @@ export default function SignupPage() {
   const [state, action, pending] = useActionState(signup, undefined);
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
+      <Logo />
       <h1 className="text-2xl font-semibold">Create your account</h1>
       <form action={action} className="flex flex-col gap-3">
         <input name="name" placeholder="Name" className="rounded border p-2" />
