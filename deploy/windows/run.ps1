@@ -35,17 +35,19 @@ if (-not (Python-Works)) {
   if (-not (Python-Works)) { throw "Python did not install. Install Python 3.12 from python.org, tick 'Add to PATH', then run this again." }
 }
 
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+if (-not ((Test-Path (Join-Path $Bin "ffmpeg.exe")) -and (Test-Path (Join-Path $Bin "ffprobe.exe")))) {
   Write-Host "Installing ffmpeg ..."
   $z = Join-Path $Root "ffmpeg.zip"
-  Download "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $z
+  try { Download "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" $z }
+  catch { Download "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" $z }
   $x = Join-Path $Root "ffmpeg-tmp"
   if (Test-Path $x) { Remove-Item -Recurse -Force $x }
   Expand-Archive -Path $z -DestinationPath $x -Force
   Get-ChildItem -Path $x -Recurse -Include ffmpeg.exe, ffprobe.exe | Copy-Item -Destination $Bin -Force
   Remove-Item -Recurse -Force $x, $z
-  if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { throw "ffmpeg did not install." }
 }
+$env:Path = "$Bin;" + $env:Path
+try { & (Join-Path $Bin "ffmpeg.exe") -version | Out-Null; & (Join-Path $Bin "ffprobe.exe") -version | Out-Null } catch { throw "ffmpeg did not install correctly. Delete the folder $Bin and run this again." }
 
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
   Write-Host "Installing cloudflared ..."
