@@ -4,7 +4,15 @@ Multi-user AI video repurposing SaaS: long videos in, edited 9:16 clips out, sen
 
 ## Status
 
-Spec only. Phase 1 (auth, dashboard, database) is next.
+| Area | State |
+| --- | --- |
+| Auth, workspaces, RLS schema, dashboard | Built; schema tested on a throwaway Postgres |
+| Shuffle and scheduling engine | Built, 10 tests |
+| Media worker (selection, reframing, captions, render, compression, voiceover mixing) | Built, 15 tests with real FFmpeg |
+| Upload signing, project start, quota checks | Built; needs R2 and worker credentials to run end to end |
+| Distribution Studio (matrix, shuffle, undo, reset, manual order, save plan) | Built |
+| Oyinca transfer logic and adapter | Built against a proposed contract; Oyinca must add it (see docs/oyinca-integration.md) |
+| Not built | Link import, Gemini selection wired to a key, TTS providers, R2 upload of rendered clips, worker-to-web callback, Stripe billing, template editor, caption editor UI, scene detection, speaker selection for multi-speaker video |
 
 ## Proposed hosting layout
 

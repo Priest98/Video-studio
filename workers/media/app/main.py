@@ -6,6 +6,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
@@ -30,7 +31,8 @@ def auth(authorization: str = Header(default="")):
 
 
 class JobRequest(BaseModel):
-    source_path: str  # local path inside the worker; the web app stages downloads from R2 first
+    source_path: str | None = None  # a file already on the worker
+    source_url: str | None = None  # short-lived signed URL (R2); downloaded into the job's work dir
     selection: SelectionSettings = SelectionSettings()
     caption_style: str = "bold_animated"
     caption_mode: str = "word"
@@ -44,12 +46,31 @@ def _selector():
     return GeminiSelector(key, model) if key and model else HeuristicSelector()
 
 
+MAX_SOURCE_BYTES = int(os.environ.get("MAX_SOURCE_BYTES", str(5 * 1024**3)))
+
+
+def fetch_source(url: str, dest: str, max_bytes: int = MAX_SOURCE_BYTES) -> str:
+    """Stream a signed URL to disk, refusing anything larger than the cap."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    total = 0
+    with httpx.stream("GET", url, timeout=60, follow_redirects=False) as r:
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_bytes(1 << 20):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError("source exceeds size limit")
+                f.write(chunk)
+    return dest
+
+
 def _run(job_id: str, req: JobRequest):
     job = JOBS[job_id]
     job["status"] = "processing"
     try:
+        src = req.source_path or fetch_source(req.source_url, os.path.join(WORK_ROOT, job_id, "source.bin"))
         _, outputs = run_pipeline(
-            req.source_path, os.path.join(WORK_ROOT, job_id), FasterWhisperTranscriber(),
+            src, os.path.join(WORK_ROOT, job_id), FasterWhisperTranscriber(),
             JobSettings(req.selection, req.caption_style, req.caption_mode, req.quality, req.max_clip_bytes),
             selector=_selector(), progress=lambda s, p: job.update(stage=s, progress=round(p, 2)),
             is_cancelled=CANCEL[job_id].is_set,
@@ -73,8 +94,10 @@ def health():
 
 @app.post("/jobs", dependencies=[Depends(auth)])
 def create_job(req: JobRequest):
-    if not os.path.isfile(req.source_path):
-        raise HTTPException(400, "source_path not found")
+    if not req.source_url and not (req.source_path and os.path.isfile(req.source_path)):
+        raise HTTPException(400, "provide source_url or an existing source_path")
+    if req.source_url and not req.source_url.startswith("https://"):
+        raise HTTPException(400, "source_url must be https")
     job_id = uuid.uuid4().hex
     JOBS[job_id] = {"id": job_id, "status": "queued", "stage": "queued", "progress": 0.0}
     CANCEL[job_id] = threading.Event()
