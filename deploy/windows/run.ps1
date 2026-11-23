@@ -103,7 +103,13 @@ $worker = Start-Process -FilePath $py -ArgumentList "-m", "uvicorn", "app.main:a
   -RedirectStandardOutput (Join-Path $logs "worker.out.log") -RedirectStandardError (Join-Path $logs "worker.err.log")
 Start-Sleep -Seconds 6
 try { Invoke-RestMethod -Uri "http://127.0.0.1:8080/health" -TimeoutSec 10 | Out-Null; Write-Host "Worker is running." }
-catch { Write-Host "Worker did not answer. See $logs\worker.err.log"; Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue; exit 1 }
+catch {
+  Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue
+  $tail = ""
+  $f = Join-Path $logs "worker.err.log"
+  if (Test-Path $f) { $tail = (Get-Content $f -Tail 15) -join "`n" }
+  throw "The worker did not start. Details:`n$tail"
+}
 
 # ---- public address ----
 $tlog = Join-Path $logs "tunnel.log"
@@ -118,7 +124,7 @@ for ($i = 0; $i -lt 90 -and -not $url; $i++) {
     if ($m) { $url = $m.Matches[0].Value }
   }
 }
-if (-not $url) { Write-Host "The public address did not start. See $tlog"; Stop-Process -Id $worker.Id, $tunnel.Id -Force -ErrorAction SilentlyContinue; exit 1 }
+if (-not $url) { Stop-Process -Id $worker.Id, $tunnel.Id -Force -ErrorAction SilentlyContinue; throw "The public address did not start. See $tlog" }
 Write-Host "Public address: $url"
 
 Write-Host "Keep this window open. Press Ctrl+C to stop."
