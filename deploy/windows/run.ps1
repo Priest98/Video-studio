@@ -11,6 +11,12 @@ $ProgressPreference = "SilentlyContinue"
 $Bin = Join-Path $Root "bin"
 New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 
+# Stop leftovers from an earlier run (they keep files locked and hold the port).
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase) } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
+
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
   if ($env:Path -notlike "*$Bin*") { $env:Path = "$Bin;" + $env:Path }
