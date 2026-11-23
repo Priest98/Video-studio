@@ -16,7 +16,7 @@ async function Content({ searchParams }: { searchParams: Promise<{ project?: str
 
 export default function Page({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-[560px] flex-col gap-6">
       <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">Send to Oyinca</h1>
       <Suspense fallback={<p className="text-muted">Loading...</p>}><Content searchParams={searchParams} /></Suspense>
     </div>

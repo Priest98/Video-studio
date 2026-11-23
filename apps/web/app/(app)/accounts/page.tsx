@@ -32,7 +32,7 @@ async function Connections() {
 
 export default function Page() {
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex max-w-[560px] flex-col gap-8">
       <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">Connect Oyinca</h1>
       <ConnectForm />
       <Suspense fallback={<p className="text-muted">Loading...</p>}><Connections /></Suspense>

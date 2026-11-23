@@ -2,15 +2,7 @@ import { NextResponse } from "next/server";
 import { currentWorkspace } from "@/lib/workspace";
 import { signedGet } from "@/lib/storage/r2";
 import { workerJob } from "@/lib/worker/job";
-import { adminClient } from "@/lib/supabase/admin";
-
-/** WORKER_URL wins when set; otherwise the address the worker last reported. */
-async function workerAddress(): Promise<string | undefined> {
-  // Ignore placeholder text left in the setting; only a real web address counts.
-  if (process.env.WORKER_URL && /^https?:\/\//.test(process.env.WORKER_URL)) return process.env.WORKER_URL;
-  const { data } = await adminClient().from("worker_endpoint").select("url").eq("id", 1).maybeSingle();
-  return data?.url ?? undefined;
-}
+import { workerAddress } from "@/lib/worker/address";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

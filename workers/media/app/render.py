@@ -15,6 +15,8 @@ QUALITY = {
 }
 MAX_CRF = 34
 
+RENDER_WIDTH = max(360, int(os.environ.get("RENDER_WIDTH", "1080")) // 2 * 2)  # 720 renders about twice as fast as 1080
+RENDER_HEIGHT = RENDER_WIDTH * 16 // 9 // 2 * 2
 DEFAULT_PRESET = os.environ.get("RENDER_PRESET", "medium")  # "veryfast" renders much quicker on a laptop
 
 
@@ -55,7 +57,7 @@ def build_command(
 ) -> list[str]:
     dur = end - start
     mix = mix or AudioMix()
-    vf = [crop, "scale=1080:1920:flags=lanczos", "fps=30"]
+    vf = [crop, f"scale={RENDER_WIDTH}:{RENDER_HEIGHT}:flags=lanczos", "fps=30"]
     if ass_path:
         vf.append(f"ass='{_filter_path(ass_path)}'")
     vf.append("format=yuv420p")

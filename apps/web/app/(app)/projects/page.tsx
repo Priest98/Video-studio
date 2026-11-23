@@ -33,7 +33,7 @@ async function List() {
 
 export default function Page() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-[560px] flex-col gap-6">
       <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">My clips</h1>
       <Suspense fallback={<p className="text-muted">Loading...</p>}><List /></Suspense>
     </div>

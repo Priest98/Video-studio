@@ -1,5 +1,6 @@
 """Link import via yt-dlp for sources the user is entitled to use. No cookies, no circumvention, no DRM bypass."""
 from __future__ import annotations
+import os
 from urllib.parse import urlparse
 
 ALLOWED_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "twitch.tv", "www.twitch.tv", "clips.twitch.tv"}
@@ -19,11 +20,14 @@ def validate_import(url: str, rights_confirmed: bool) -> str:
     return url
 
 
+MAX_HEIGHT = int(os.environ.get("SOURCE_MAX_HEIGHT", "1080"))
+
+
 def download(url: str, dest_dir: str, max_seconds: int = 3600, max_bytes: int = 5 * 1024**3) -> str:
     import yt_dlp  # lazy
 
     opts = {
-        "outtmpl": f"{dest_dir}/source.%(ext)s", "format": "bv*[height<=1080]+ba/b[height<=1080]", "merge_output_format": "mp4",
+        "outtmpl": f"{dest_dir}/source.%(ext)s", "format": f"bv*[height<={MAX_HEIGHT}]+ba/b[height<={MAX_HEIGHT}]", "merge_output_format": "mp4",
         "noplaylist": True, "quiet": True, "max_filesize": max_bytes,
         "match_filter": lambda info, **_: None if (info.get("duration") or 0) <= max_seconds else f"longer than {max_seconds}s",
     }

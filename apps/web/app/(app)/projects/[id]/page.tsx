@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { currentWorkspace } from "@/lib/workspace";
 import { signedGet } from "@/lib/storage/r2";
 import { statusLabel } from "@/lib/status";
-import { AutoRefresh, StartButton } from "./live";
+import { Download, Plus, Send } from "lucide-react";
+import { AutoRefresh, Progress, StartButton } from "./live";
 
 async function url(key: string | null) {
   if (!key) return null;
@@ -14,7 +15,7 @@ async function url(key: string | null) {
 async function Project({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, workspaceId } = await currentWorkspace();
-  const { data: p } = await supabase.from("projects").select("id, title, status, error").eq("id", id).eq("workspace_id", workspaceId).maybeSingle();
+  const { data: p } = await supabase.from("projects").select("id, title, status, error, settings").eq("id", id).eq("workspace_id", workspaceId).maybeSingle();
   if (!p) notFound();
   const s = statusLabel(p.status);
 
@@ -27,16 +28,16 @@ async function Project({ params }: { params: Promise<{ id: string }> }) {
 
   if (p.status === "processing") {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex max-w-[560px] flex-col gap-6">
         <AutoRefresh />
         {head}
-        <p className="text-ink-2">This takes a few minutes. You can leave this page and come back.</p>
+        <Progress id={p.id} clipCount={(p.settings as { selection?: { clip_count?: number } } | null)?.selection?.clip_count ?? 3} />
       </div>
     );
   }
   if (p.status === "queued") {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex max-w-[560px] flex-col gap-6">
         {head}
         <p className="text-ink-2">This video has not started yet.</p>
         <StartButton id={p.id} label="Start now" />
@@ -45,7 +46,7 @@ async function Project({ params }: { params: Promise<{ id: string }> }) {
   }
   if (p.status !== "ready") {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex max-w-[560px] flex-col gap-6">
         {head}
         {p.error && <p className="text-ink-2">{p.error}</p>}
         <Link href="/" className="btn btn-primary w-fit">Try another video</Link>
@@ -59,18 +60,21 @@ async function Project({ params }: { params: Promise<{ id: string }> }) {
   return (
     <div className="flex flex-col gap-8">
       {head}
-      <Link href={`/distribution?project=${p.id}`} className="btn btn-primary w-full">Send to Oyinca</Link>
-      <ul className="flex flex-col gap-10">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Link href={`/distribution?project=${p.id}`} className="btn btn-primary"><Send aria-hidden size={18} strokeWidth={1.5} />Send to Oyinca</Link>
+        <Link href="/" className="btn btn-quiet"><Plus aria-hidden size={18} strokeWidth={1.5} />Make more clips</Link>
+      </div>
+      <ul className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
         {(clips ?? []).map((c, i) => (
-          <li key={c.id} className="flex flex-col gap-3">
+          <li key={c.id} className="rise flex flex-col gap-3" style={{ "--i": i } as React.CSSProperties}>
             {urls[i] ? (
-              <video src={urls[i]!} controls preload="metadata" playsInline className="aspect-[9/16] max-h-[70vh] w-full rounded-2xl bg-[#1a1d26] object-contain" />
+              <video src={urls[i]!} controls preload="metadata" playsInline className="aspect-[9/16] max-h-[70vh] w-full rounded-2xl bg-[#11141c] object-contain shadow-[0_18px_32px_-14px_rgba(10,25,49,0.4)]" />
             ) : (
               <p className="rounded-2xl bg-sunken p-6 text-ink-2">This clip is not ready to play yet.</p>
             )}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-3">
               <p className="min-w-0 font-medium">{c.title || `Clip ${i + 1}`}</p>
-              {urls[i] && <a href={urls[i]!} download className="btn btn-quiet shrink-0">Download</a>}
+              {urls[i] && <a href={urls[i]!} download className="btn btn-quiet shrink-0"><Download aria-hidden size={18} strokeWidth={1.5} />Download</a>}
             </div>
             {c.needs_manual_crop && <p className="text-[15px] text-ink-2">The speaker was hard to follow, so this clip is centered. Check it before you send it.</p>}
           </li>

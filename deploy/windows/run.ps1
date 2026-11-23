@@ -80,6 +80,8 @@ $env:WORKER_CONCURRENCY = "1"
 # Faster on a laptop: smaller speech model and a quicker video encoder preset.
 if (-not $env:WHISPER_MODEL) { $env:WHISPER_MODEL = "base" }
 if (-not $env:RENDER_PRESET) { $env:RENDER_PRESET = "veryfast" }
+if (-not $env:RENDER_WIDTH) { $env:RENDER_WIDTH = "720" }
+if (-not $env:SOURCE_MAX_HEIGHT) { $env:SOURCE_MAX_HEIGHT = "720" }
 $env:WORK_ROOT = Join-Path $Root "work"
 New-Item -ItemType Directory -Force -Path $env:WORK_ROOT | Out-Null
 
