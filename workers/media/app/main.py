@@ -94,22 +94,56 @@ def _acquire(job_id: str, req: JobRequest) -> str:
     return fetch_source(req.source_url, os.path.join(WORK_ROOT, job_id, "source.bin"))
 
 
-def _publish(job: dict, req: JobRequest, uploader):
-    """Upload each rendered clip to R2 and tell the web app. Keys are tenant-prefixed."""
-    for i, c in enumerate(job["clips"], 1):
-        key = clip_key(req.workspace_id, req.project_id, i)
-        uploader.upload(c["path"], key)
-        c["storage_key"] = key
+def _clip_dict(o) -> dict:
+    return {**o.candidate.model_dump(), "path": o.render.path, "size_bytes": o.render.size_bytes,
+            "crf": o.render.crf, "compression_pct": o.render.compression_pct,
+            "width": o.render.width, "height": o.render.height, "needs_manual_crop": not o.crop_confident,
+            "narration_fits": o.narration_fits, "voice_characters": o.voice_characters, "voice_cost_usd": o.voice_cost_usd}
+
+
+def _public(c: dict) -> dict:
+    return {k: v for k, v in c.items() if k != "path"}
+
+
+def _send(req: JobRequest, payload: dict):
     if req.callback_url and os.environ.get("CALLBACK_SECRET"):
-        post_callback(req.callback_url, os.environ["CALLBACK_SECRET"], {
-            "project_id": req.project_id, "workspace_id": req.workspace_id, "status": job["status"],
-            "error": job.get("error"), "source_seconds": job.get("source_seconds", 0), "clips": [{k: v for k, v in c.items() if k != "path"} for c in job["clips"]],
-        })
+        post_callback(req.callback_url, os.environ["CALLBACK_SECRET"], {"project_id": req.project_id, "workspace_id": req.workspace_id, **payload})
+
+
+def _publish_clip(c: dict, i: int, req: JobRequest, uploader):
+    """Upload one finished clip and tell the web app right away, so it can be watched while the rest render."""
+    key = clip_key(req.workspace_id, req.project_id, i)
+    uploader.upload(c["path"], key)
+    c["storage_key"] = key
+    try:
+        _send(req, {"status": "processing", "partial": True, "source_seconds": 0, "clips": [_public(c)]})
+    except Exception:
+        pass  # the final callback carries every clip, so a missed early notice only delays when it appears
+
+
+def _publish(job: dict, req: JobRequest, uploader):
+    """Upload any clip not yet uploaded, then send the final result. Keys are tenant-prefixed."""
+    for i, c in enumerate(job["clips"], 1):
+        if not c.get("storage_key"):
+            _publish_clip(c, i, req, uploader)
+    _send(req, {"status": job["status"], "error": job.get("error"), "source_seconds": job.get("source_seconds", 0), "clips": [_public(c) for c in job["clips"]]})
 
 
 def _run(job_id: str, req: JobRequest, uploader=None):
     job = JOBS[job_id]
     job["status"] = "processing"
+    job["clips"] = []
+    publishing = bool(req.workspace_id and req.project_id)
+    up = uploader or (R2Uploader() if publishing else None)
+    bg = ThreadPoolExecutor(max_workers=1)  # uploads overlap with the next clip's rendering
+    pending = []
+
+    def on_clip(i, o):
+        c = _clip_dict(o)
+        job["clips"].append(c)
+        if publishing:
+            pending.append(bg.submit(_publish_clip, c, i, req, up))
+
     try:
         src = _acquire(job_id, req)
         job["source_seconds"] = probe(src).duration
@@ -118,18 +152,13 @@ def _run(job_id: str, req: JobRequest, uploader=None):
             JobSettings(req.selection, req.caption_style, req.caption_mode, req.quality, req.max_clip_bytes,
                         req.narrations, req.voice, req.voice_mode),
             selector=_selector(), tts=_tts(), progress=lambda s, p: job.update(stage=s, progress=round(p, 2)),
-            is_cancelled=CANCEL[job_id].is_set,
+            is_cancelled=CANCEL[job_id].is_set, on_clip=on_clip,
         )
-        job["clips"] = [
-            {**o.candidate.model_dump(), "path": o.render.path, "size_bytes": o.render.size_bytes,
-             "crf": o.render.crf, "compression_pct": o.render.compression_pct,
-             "width": o.render.width, "height": o.render.height, "needs_manual_crop": not o.crop_confident,
-             "narration_fits": o.narration_fits, "voice_characters": o.voice_characters, "voice_cost_usd": o.voice_cost_usd}
-            for o in outputs
-        ]
+        for f in pending:
+            f.result()  # surface any upload failure before declaring the job ready
         job["status"] = "ready"
-        if req.workspace_id and req.project_id:
-            _publish(job, req, uploader or R2Uploader())
+        if publishing:
+            _publish(job, req, up)
     except Exception as e:  # report, never crash the pool
         job["status"] = "cancelled" if CANCEL[job_id].is_set() else "failed"
         job["error"] = str(e)
@@ -140,6 +169,7 @@ def _run(job_id: str, req: JobRequest, uploader=None):
             except Exception:
                 pass
     finally:
+        bg.shutdown(wait=True)
         # Clips are in storage (or the job failed), so free the disk. Only the job's own folder is removed.
         if req.workspace_id and req.project_id:
             shutil.rmtree(os.path.join(WORK_ROOT, job_id), ignore_errors=True)

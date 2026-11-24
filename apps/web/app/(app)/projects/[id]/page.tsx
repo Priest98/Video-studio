@@ -27,11 +27,26 @@ async function Project({ params }: { params: Promise<{ id: string }> }) {
   );
 
   if (p.status === "processing") {
+    const { data: early } = await supabase.from("clips").select("id, title, storage_path").eq("project_id", id).eq("workspace_id", workspaceId).order("start_seconds");
+    const earlyUrls = await Promise.all((early ?? []).map((c) => url(c.storage_path)));
     return (
       <div className="flex max-w-[560px] flex-col gap-6">
         <AutoRefresh />
         {head}
-        <Progress id={p.id} clipCount={(p.settings as { selection?: { clip_count?: number } } | null)?.selection?.clip_count ?? 3} />
+        <Progress id={p.id} clipCount={(p.settings as { selection?: { clip_count?: number } } | null)?.selection?.clip_count ?? 3} ready={early?.length ?? 0} />
+        {(early?.length ?? 0) > 0 && (
+          <div className="flex flex-col gap-4">
+            <p className="font-medium">Ready to watch now</p>
+            <ul className="grid grid-cols-2 gap-4">
+              {(early ?? []).map((c, i) => earlyUrls[i] && (
+                <li key={c.id} className="flex flex-col gap-2">
+                  <video src={earlyUrls[i]!} controls preload="metadata" playsInline className="aspect-[9/16] w-full rounded-2xl bg-[#11141c] object-contain" />
+                  <p className="text-[15px] font-medium">{c.title || `Clip ${i + 1}`}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }

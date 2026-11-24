@@ -46,6 +46,7 @@ def run_pipeline(
     src: str, workdir: str, transcriber: Transcriber, settings: JobSettings | None = None,
     selector: Selector | None = None, progress: Callable[[str, float], None] = lambda stage, pct: None,
     tts: TTSProvider | None = None, is_cancelled: Callable[[], bool] = lambda: False,
+    on_clip: Callable[[int, "ClipOutput"], None] | None = None,
 ) -> tuple[Transcript, list[ClipOutput]]:
     settings = settings or JobSettings()
     selector = selector or HeuristicSelector()
@@ -84,5 +85,7 @@ def run_pipeline(
             quality=settings.quality, mix=mix, max_bytes=settings.max_clip_bytes,
         )
         outputs.append(ClipOutput(cand, result, plan.confident, fits, chars, cost))
+        if on_clip:
+            on_clip(i, outputs[-1])
         progress("render", 0.45 + 0.55 * i / len(candidates))
     return transcript, outputs

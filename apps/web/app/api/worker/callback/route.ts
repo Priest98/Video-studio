@@ -19,19 +19,31 @@ export async function POST(request: Request) {
   const { error: dup } = await db.from("worker_events").insert({ id: eventId, workspace_id: project.workspace_id });
   if (dup) return NextResponse.json({ ok: true, duplicate: true }); // retried callback: already applied
 
+  const style = (project.settings as { caption_style?: string } | null)?.caption_style ?? null;
+  const insertNew = async (clips: Record<string, unknown>[]) => {
+    // Clips can arrive early (one at a time) and again in the final result; store each one once.
+    const { data: have } = await db.from("clips").select("storage_path").eq("project_id", project.id);
+    const seen = new Set((have ?? []).map((r) => r.storage_path));
+    const rows = clips.filter((c) => c.storage_key && !seen.has(c.storage_key as string)).map((c) => ({
+      workspace_id: project.workspace_id, project_id: project.id,
+      start_seconds: c.start, end_seconds: c.end, title: c.title, description: c.description, transcript: c.transcript, hook: c.hook,
+      category: c.category, engagement_score: c.engagement_score, selection_reason: c.reason, status: "ready",
+      storage_path: c.storage_key, size_bytes: c.size_bytes, crf: c.crf, needs_manual_crop: c.needs_manual_crop, caption_style: style,
+    }));
+    if (rows.length) await db.from("clips").insert(rows);
+  };
+
+  if (body.partial) {
+    if (project.status === "processing") await insertNew(body.clips as Record<string, unknown>[]);
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.status !== "ready") {
     await db.from("projects").update({ status: body.status === "cancelled" ? "cancelled" : "failed", error: body.error ?? null }).eq("id", project.id);
     return NextResponse.json({ ok: true });
   }
 
-  const style = (project.settings as { caption_style?: string } | null)?.caption_style ?? null;
-  const rows = (body.clips as Record<string, unknown>[]).map((c) => ({
-    workspace_id: project.workspace_id, project_id: project.id,
-    start_seconds: c.start, end_seconds: c.end, title: c.title, description: c.description, transcript: c.transcript, hook: c.hook,
-    category: c.category, engagement_score: c.engagement_score, selection_reason: c.reason, status: "ready",
-    storage_path: c.storage_key, size_bytes: c.size_bytes, crf: c.crf, needs_manual_crop: c.needs_manual_crop, caption_style: style,
-  }));
-  if (rows.length) await db.from("clips").insert(rows);
+  await insertNew(body.clips as Record<string, unknown>[]);
   await db.from("projects").update({ status: "ready", duration_seconds: body.source_seconds }).eq("id", project.id);
 
   const usage = [{ workspace_id: project.workspace_id, project_id: project.id, kind: "processing_minutes", quantity: Number(body.source_seconds ?? 0) / 60 }];

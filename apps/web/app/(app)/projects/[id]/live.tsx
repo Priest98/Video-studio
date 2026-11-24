@@ -26,7 +26,7 @@ function activity(stage: string | null): string {
 }
 
 /** Live progress. One slot per clip fills in as each clip is finished. */
-export function Progress({ id, clipCount }: { id: string; clipCount: number }) {
+export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: number; ready?: number }) {
   const [stage, setStage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
@@ -48,7 +48,8 @@ export function Progress({ id, clipCount }: { id: string; clipCount: number }) {
 
   const pct = Math.min(99, Math.round(progress * 100));
   // The render stage covers the last 55% of the job; each clip is an equal share of it.
-  const made = stage === "render" || stage === "select" ? Math.max(0, ((progress - 0.45) / 0.55) * clipCount) : 0;
+  const estimate = stage === "render" || stage === "select" ? Math.max(0, ((progress - 0.45) / 0.55) * clipCount) : 0;
+  const made = Math.max(estimate, ready);
 
   return (
     <div className="flex flex-col gap-6" role="status" aria-live="polite">
