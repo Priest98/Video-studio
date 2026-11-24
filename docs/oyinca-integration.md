@@ -56,6 +56,7 @@ Not verified: `npm ci` failed in the Oyinca workspace, so the Nest code has not 
 
 ## Video Studio side
 
-- Connect: paste the `ptk_` token on the Accounts page. It is verified against `/partner/v1/accounts`, then stored AES-256-GCM encrypted (`TOKEN_ENCRYPTION_KEY`, 32 bytes base64) in `oyinca_credentials`. Accounts are synced.
+- Connect: press **Connect Oyinca** on the Accounts page. The browser goes to Oyinca's `/connect/video-studio` consent screen (sign-in first if needed), then returns to `/api/oyinca/callback` with a one-time code. The server swaps it for a `ptk_` token using PKCE (verifier kept in a 10-minute httpOnly cookie) and stores it as below. Oyinca needs `PARTNER_CLIENTS` to list this app's callback address exactly. Earlier design: paste the token.
+- Token verification: It is verified against `/partner/v1/accounts`, then stored AES-256-GCM encrypted (`TOKEN_ENCRYPTION_KEY`, 32 bytes base64) in `oyinca_credentials`. Accounts are synced.
 - Send: "Send to Oyinca" on a saved plan creates one transfer per item (unique idempotency key), submits with up to 3 attempts, flags the connection expired on auth errors, and isolates failures per item.
-- Required env: `OYINCA_API_URL`, `TOKEN_ENCRYPTION_KEY`.
+- Required env: `OYINCA_API_URL` (for example `https://oyinca.com/api`), optional `OYINCA_WEB_URL`, `TOKEN_ENCRYPTION_KEY`.
