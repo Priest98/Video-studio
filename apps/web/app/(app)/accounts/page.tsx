@@ -30,13 +30,21 @@ async function Connections() {
   );
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
+async function Notice({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   const { connected, error } = await searchParams;
+  return (
+    <>
+      {connected && <p role="status" className="font-medium text-ok">Connected. {connected} account{connected === "1" ? "" : "s"} available.</p>}
+      {error && <p role="alert" className="font-medium text-danger">{error}</p>}
+    </>
+  );
+}
+
+export default function Page({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   return (
     <div className="flex max-w-[560px] flex-col gap-8">
       <h1 className="text-[clamp(26px,6vw,32px)] font-semibold leading-tight">Connect Oyinca</h1>
-      {connected && <p role="status" className="font-medium text-ok">Connected. {connected} account{connected === "1" ? "" : "s"} available.</p>}
-      {error && <p role="alert" className="font-medium text-danger">{error}</p>}
+      <Suspense fallback={null}><Notice searchParams={searchParams} /></Suspense>
       <ConnectForm />
       <Suspense fallback={<p className="text-muted">Loading...</p>}><Connections /></Suspense>
     </div>
