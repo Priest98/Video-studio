@@ -5,6 +5,7 @@ import { scheduleSequences, type Assignments } from "@/lib/distribution/shuffle"
 import { adminClient } from "@/lib/supabase/admin";
 import { decrypt } from "@/lib/crypto";
 import { signedGet } from "@/lib/storage/r2";
+import { clipCaption } from "@/lib/oyinca/caption";
 import { HttpOyincaClient } from "@/lib/oyinca/client";
 import { idempotencyKey, processBatch, type TransferRow, type TransferStatus, type TransferStore } from "@/lib/oyinca/transfer";
 
@@ -73,7 +74,7 @@ export async function sendPlan(planId: string): Promise<{ results?: Record<Trans
   if (!plan) return { error: "Plan not found." };
 
   const { data: items } = await db.from("distribution_items")
-    .select("id, clip_id, scheduled_at, account:oyinca_accounts(connection_id, external_brand_id, external_account_id, can_submit), clip:clips(title, description, storage_path, size_bytes)")
+    .select("id, clip_id, scheduled_at, account:oyinca_accounts(connection_id, external_brand_id, external_account_id, can_submit), clip:clips(title, description, hook, storage_path, size_bytes)")
     .eq("plan_id", planId).eq("workspace_id", workspaceId).order("position");
   if (!items?.length) return { error: "This plan has no items." };
 
@@ -135,14 +136,14 @@ export async function sendPlan(planId: string): Promise<{ results?: Record<Trans
     const out = await processBatch(store, client, group, async (row) => {
       const item = byItem.get(row.itemId)!;
       const acc = item.account as unknown as { external_brand_id: string; external_account_id: string; can_submit: boolean };
-      const clip = item.clip as unknown as { title: string | null; description: string | null; storage_path: string | null; size_bytes: number | null };
+      const clip = item.clip as unknown as { title: string | null; description: string | null; hook: string | null; storage_path: string | null; size_bytes: number | null };
       if (!acc.can_submit) throw new Error("This Oyinca account does not allow submissions.");
       if (!clip.storage_path) throw new Error("The clip has not finished rendering.");
       return {
         idempotencyKey: row.idempotencyKey, brandId: acc.external_brand_id, accountId: acc.external_account_id,
         videoUrl: await signedGet(clip.storage_path, 900), filename: `${(clip.title ?? "clip").replace(/[^\w-]+/g, "-").slice(0, 60)}.mp4`,
         mimeType: "video/mp4" as const, sizeBytes: clip.size_bytes ?? 0, title: clip.title ?? undefined,
-        caption: clip.description ?? undefined, suggestedPublishAt: item.scheduled_at ?? undefined,
+        caption: clipCaption(clip), suggestedPublishAt: item.scheduled_at ?? undefined,
       };
     });
     for (const s of Object.values(out)) counts[s] += 1;
