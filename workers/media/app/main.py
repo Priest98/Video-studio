@@ -152,7 +152,7 @@ def _run(job_id: str, req: JobRequest, uploader=None):
             JobSettings(req.selection, req.caption_style, req.caption_mode, req.quality, req.max_clip_bytes,
                         req.narrations, req.voice, req.voice_mode),
             selector=_selector(), tts=_tts(), progress=lambda s, p: job.update(stage=s, progress=round(p, 2)),
-            is_cancelled=CANCEL[job_id].is_set, on_clip=on_clip,
+            is_cancelled=CANCEL[job_id].is_set, on_clip=on_clip, info_cb=lambda **kw: job.update(kw),
         )
         for f in pending:
             f.result()  # surface any upload failure before declaring the job ready

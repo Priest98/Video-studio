@@ -23,7 +23,10 @@ def validate_import(url: str, rights_confirmed: bool) -> str:
 MAX_HEIGHT = int(os.environ.get("SOURCE_MAX_HEIGHT", "1080"))
 
 
-def download(url: str, dest_dir: str, max_seconds: int = 3600, max_bytes: int = 5 * 1024**3) -> str:
+MAX_SECONDS = int(os.environ.get("MAX_SOURCE_SECONDS", str(4 * 3600 + 1800)))  # 4.5 hours
+
+
+def download(url: str, dest_dir: str, max_seconds: int = MAX_SECONDS, max_bytes: int = 5 * 1024**3) -> str:
     import yt_dlp  # lazy
 
     opts = {

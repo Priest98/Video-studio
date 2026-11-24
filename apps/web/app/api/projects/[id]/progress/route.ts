@@ -17,7 +17,11 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     const r = await fetch(`${base}/jobs/${jobId}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8_000), cache: "no-store" });
     if (!r.ok) return NextResponse.json({ status: project.status, stage: null, progress: 0 });
     const j = await r.json();
-    return NextResponse.json({ status: project.status, stage: j.stage ?? null, progress: typeof j.progress === "number" ? j.progress : 0 });
+    const num = (v: unknown) => (typeof v === "number" ? v : null);
+    return NextResponse.json({
+      status: project.status, stage: j.stage ?? null, progress: typeof j.progress === "number" ? j.progress : 0,
+      expected: num(j.expected), clipsDone: num(j.clips_done), etaSeconds: num(j.eta_seconds),
+    });
   } catch {
     return NextResponse.json({ status: project.status, stage: null, progress: 0 });
   }

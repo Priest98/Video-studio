@@ -29,6 +29,9 @@ function activity(stage: string | null): string {
 export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: number; ready?: number }) {
   const [stage, setStage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [expected, setExpected] = useState<number | null>(null);
+  const [clipsDone, setClipsDone] = useState<number | null>(null);
+  const [eta, setEta] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -39,6 +42,9 @@ export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: 
         const j = await r.json();
         setStage(j.stage ?? null);
         setProgress(typeof j.progress === "number" ? j.progress : 0);
+        setExpected(typeof j.expected === "number" ? j.expected : null);
+        setClipsDone(typeof j.clipsDone === "number" ? j.clipsDone : null);
+        setEta(typeof j.etaSeconds === "number" ? j.etaSeconds : null);
       } catch { /* try again on the next tick */ }
     }
     tick();
@@ -48,8 +54,11 @@ export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: 
 
   const pct = Math.min(99, Math.round(progress * 100));
   // The render stage covers the last 55% of the job; each clip is an equal share of it.
-  const estimate = stage === "render" || stage === "select" ? Math.max(0, ((progress - 0.45) / 0.55) * clipCount) : 0;
-  const made = Math.max(estimate, ready);
+  // The worker reports the real number of clips once it knows it; until then fall back to an estimate.
+  const total = expected ?? clipCount;
+  const estimate = stage === "render" || stage === "select" ? Math.max(0, ((progress - 0.45) / 0.55) * total) : 0;
+  const made = Math.max(clipsDone ?? estimate, ready);
+  const minutesLeft = eta !== null && eta > 0 ? Math.max(1, Math.round(eta / 60)) : null;
 
   return (
     <div className="flex flex-col gap-6" role="status" aria-live="polite">
@@ -61,7 +70,7 @@ export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: 
         <div className="h-full rounded-full bg-steel transition-[width] duration-500 ease-out" style={{ width: `${Math.max(pct, 3)}%` }} />
       </div>
       <ul className="flex gap-3" aria-label="Clips">
-        {Array.from({ length: clipCount }, (_, i) => {
+        {Array.from({ length: total }, (_, i) => {
           const done = made >= i + 1;
           const part = done ? 1 : Math.max(0, Math.min(1, made - i));
           return (
@@ -72,7 +81,9 @@ export function Progress({ id, clipCount, ready = 0 }: { id: string; clipCount: 
           );
         })}
       </ul>
-      <p className="text-ink-2">You can leave this page and come back. Longer videos take longer.</p>
+      <p className="text-ink-2">
+        {minutesLeft ? `About ${minutesLeft} ${minutesLeft === 1 ? "minute" : "minutes"} left. ` : ""}You can leave this page and come back. Longer videos take longer.
+      </p>
     </div>
   );
 }
